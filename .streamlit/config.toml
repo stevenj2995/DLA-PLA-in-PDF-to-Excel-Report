@@ -1,0 +1,13 @@
+[server]
+address = "localhost"
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#125DAB"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F6FB"
+textColor = "#16263A"

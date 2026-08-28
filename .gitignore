@@ -1,0 +1,26 @@
+# ---- Dokumen rahasia: JANGAN pernah masuk git ----
+# File-file ini tetap ada di laptop, hanya tidak diikutkan ke GitHub.
+Input/
+Output/
+Memory/
+Training and Testing Data/
+Standar/*.xlsx
+*.pdf
+
+# ---- Berkas kerja Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# ---- Berkas sistem ----
+.DS_Store
+Thumbs.db
+~$*
+
+# ---- Web / deploy ----
+node_modules/
+.vercel/
+.env
+.env.local
