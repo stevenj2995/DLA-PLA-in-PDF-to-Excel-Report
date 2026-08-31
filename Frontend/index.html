@@ -7,30 +7,16 @@
 <meta name="description" content="Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar, otomatis.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128196;</text></svg>">
 <link rel="stylesheet" href="styles.css">
-<script>
-  // Dijalankan sebelum halaman digambar supaya tema tidak berkedip saat dimuat.
-  try {
-    var saved = localStorage.getItem("theme");
-    if (saved) document.documentElement.setAttribute("data-theme", saved);
-  } catch (e) {}
-</script>
 </head>
 <body>
 
 <header class="site-header">
-  <div class="container header-inner">
-    <img src="logo.png" alt="" class="logo">
-    <div class="header-title">
-      <h1>DLA to Excel Report</h1>
-      <p class="tagline">Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar</p>
-    </div>
+  <div class="header-inner">
+    <img src="logo.png" alt="Asuransi Astra" class="logo">
+    <h1>DLA to Excel Report</h1>
     <div id="status" class="status-pill status-checking">
       <span class="dot"></span><span id="status-text">Menghubungi…</span>
     </div>
-    <button id="theme-toggle" class="theme-toggle" type="button"
-            aria-label="Ganti tema terang/gelap" title="Ganti tema">
-      <span class="theme-icon"></span>
-    </button>
   </div>
 </header>
 
@@ -44,7 +30,6 @@
 
   <section class="card">
     <p class="step-title"><span class="step-number">1</span> Email Anda</p>
-    <p class="hint">Diisi ke kolom <strong>N — Reported Email Address</strong> di setiap baris Excel.</p>
     <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
 
     <div id="code-row" class="hidden">
@@ -55,8 +40,11 @@
 
   <section class="card">
     <p class="step-title"><span class="step-number">2</span> Berkas PDF</p>
-    <p class="hint">PDF digital maupun hasil pindaian. Maksimal <span id="max-files">10</span> berkas,
-       <span id="max-size">15</span> MB per berkas.</p>
+
+    <p class="upload-note">
+      PDF Anda dihapus begitu Excel-nya jadi. Excel hasilnya hilang otomatis
+      setelah <span class="session-minutes">15</span> menit.
+    </p>
 
     <div id="dropzone" class="dropzone" tabindex="0" role="button"
          aria-label="Pilih atau jatuhkan berkas PDF">
@@ -112,14 +100,6 @@
   </section>
 
 </main>
-
-<footer class="site-footer">
-  <div class="container">
-    <p>PDF Anda dihapus segera setelah Excel-nya jadi. File Excel dihapus otomatis
-       setelah <span class="session-minutes">15</span> menit. Tidak ada dokumen yang
-       disimpan permanen, dan berkas tidak melewati Vercel.</p>
-  </div>
-</footer>
 
 <script src="config.js"></script>
 <script src="app.js"></script>

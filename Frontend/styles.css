@@ -1,6 +1,5 @@
-/* Semua warna berasal dari token di :root. Ubah di sini, seluruh halaman ikut.
-   Tema gelap memakai gradien biru dari tampilan lama; kartunya tetap putih di
-   kedua tema, jadi hanya latar dan teks di atasnya yang perlu ditukar. */
+/* Satu tema saja: header putih di atas, latar biru di bawahnya, kartu putih.
+   Semua warna berasal dari token di :root -- ubah di sini, seluruh halaman ikut. */
 :root {
   color-scheme: light;
   --blue: #125DAB;
@@ -10,51 +9,14 @@
   --amber: #C77700;
   --red: #D64545;
 
-  --page: #F2F6FB;
-  --page-image: none;
   --surface: #fff;
   --line: #DCE6F2;
   --text: #16263A;
   --text-soft: #5B7089;
-
-  --on-page: #16263A;
-  --on-page-soft: #5B7089;
-  --header-bg: #fff;
-  --header-line: #DCE6F2;
+  --on-blue: #fff;
 
   --radius: 18px;
-  --shadow: 0 1px 3px rgba(18, 93, 171, .07), 0 18px 40px -30px rgba(4, 26, 52, .45);
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0B4079;
-  --page-image:
-    radial-gradient(1100px 620px at 88% -8%, rgba(72, 199, 235, .34), transparent 62%),
-    radial-gradient(900px 520px at -8% 108%, rgba(72, 199, 235, .20), transparent 60%),
-    linear-gradient(150deg, #0B4079 0%, #125DAB 52%, #1E7FC0 100%);
-  --on-page: #fff;
-  --on-page-soft: rgba(255, 255, 255, .80);
-  --header-bg: transparent;
-  --header-line: rgba(255, 255, 255, .18);
-  --shadow: 0 20px 46px -24px rgba(4, 26, 52, .75);
-}
-
-/* Belum pernah memilih tema -> ikuti setelan sistem. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --page: #0B4079;
-    --page-image:
-      radial-gradient(1100px 620px at 88% -8%, rgba(72, 199, 235, .34), transparent 62%),
-      radial-gradient(900px 520px at -8% 108%, rgba(72, 199, 235, .20), transparent 60%),
-      linear-gradient(150deg, #0B4079 0%, #125DAB 52%, #1E7FC0 100%);
-    --on-page: #fff;
-    --on-page-soft: rgba(255, 255, 255, .80);
-    --header-bg: transparent;
-    --header-line: rgba(255, 255, 255, .18);
-    --shadow: 0 20px 46px -24px rgba(4, 26, 52, .75);
-  }
+  --shadow: 0 20px 46px -24px rgba(4, 26, 52, .55);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0 }
@@ -63,9 +25,13 @@ body {
   font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system,
                Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
-  background-color: var(--page);
-  background-image: var(--page-image);
+  background-color: #0B4079;
+  background-image:
+    radial-gradient(1100px 620px at 88% -8%, rgba(72, 199, 235, .34), transparent 62%),
+    radial-gradient(900px 520px at -8% 108%, rgba(72, 199, 235, .20), transparent 60%),
+    linear-gradient(150deg, #0B4079 0%, #125DAB 52%, #1E7FC0 100%);
   background-attachment: fixed;
+  min-height: 100vh;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
@@ -74,12 +40,15 @@ body {
 .hidden { display: none !important }
 
 /* ------------------------------------------------------------------ header */
-.site-header { background: var(--header-bg); border-bottom: 1px solid var(--header-line) }
-.header-inner { display: flex; align-items: center; gap: 16px; padding: 18px 20px }
-.logo { height: 42px; width: auto; flex-shrink: 0 }
-.header-title { flex: 1; min-width: 0 }
-.site-header h1 { font-size: 20px; font-weight: 650; letter-spacing: -.2px; color: var(--on-page) }
-.tagline { font-size: 13.5px; color: var(--on-page-soft) }
+/* Selebar layar, bukan di dalam .container, supaya logonya benar-benar
+   menempel di pojok kiri atas. */
+.site-header { background: var(--surface); border-bottom: 1px solid var(--line) }
+.header-inner { display: flex; align-items: center; gap: 16px; padding: 14px 24px }
+.logo { height: 40px; width: auto; flex-shrink: 0 }
+.site-header h1 {
+  flex: 1; min-width: 0;
+  font-size: 19px; font-weight: 650; letter-spacing: -.2px; color: var(--text);
+}
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
@@ -93,27 +62,17 @@ body {
 .status-checking .dot { animation: blink 1s infinite }
 @keyframes blink { 50% { opacity: .25 } }
 
-.theme-toggle {
-  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
-  background: var(--surface); border: 1px solid var(--line);
-  display: grid; place-items: center; font-size: 16px; line-height: 1;
-  transition: transform .15s ease;
-}
-.theme-toggle:hover { transform: rotate(-15deg) }
-.theme-icon::before { content: "🌙" }
-:root[data-theme="dark"] .theme-icon::before { content: "☀️" }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .theme-icon::before { content: "☀️" }
-}
-
 /* ------------------------------------------------------------------- kartu */
-main { padding: 28px 0 40px }
+main { padding: 28px 0 44px }
 .card {
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow);
   padding: 22px; margin-bottom: 18px;
 }
-.step-title { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15.5px }
+.step-title {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 650; font-size: 15.5px; margin-bottom: 14px;
+}
 .step-number {
   display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
   background: var(--blue); color: #fff; font-size: 13px; font-weight: 700;
@@ -133,6 +92,12 @@ input[type=password]:focus {
 }
 
 /* -------------------------------------------------------------- area unggah */
+.upload-note {
+  font-size: 12.5px; line-height: 1.5; margin-bottom: 12px;
+  padding: 9px 12px; border-radius: 10px;
+  background: #F0F6FD; border: 1px solid var(--line); color: var(--blue-dark);
+}
+
 .dropzone {
   border: 2px dashed var(--line); border-radius: 14px; padding: 26px 18px;
   text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
@@ -192,10 +157,11 @@ input[type=password]:focus {
 .notice-blue { background: #F0F6FD; border: 1px solid var(--line); color: var(--blue-dark) }
 .notice-green { background: #EFFAF5; border: 1px solid #BFE5D5; color: #0A6B4A }
 .cleanup-warning { margin: 12px 0 16px }
+.card-cleanup { border-top: 3px solid var(--amber) }
 
 /* ------------------------------------------------------------------- hasil */
-#results h2 { font-size: 18px; font-weight: 650; margin: 26px 0 14px; color: var(--on-page) }
-#results h3 { font-size: 14.5px; font-weight: 650; margin: 0 0 12px }
+#results h2 { font-size: 19px; font-weight: 650; margin: 26px 0 14px; color: var(--on-blue) }
+#results h3 { font-size: 14.5px; font-weight: 650; margin: 0 0 12px; color: var(--on-blue) }
 
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px }
 .stat {
@@ -222,20 +188,15 @@ input[type=password]:focus {
 
 #results details {
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-  padding: 11px 15px; margin-bottom: 9px; font-size: 13.5px;
+  padding: 11px 15px; margin-bottom: 9px; font-size: 13.5px; color: var(--text);
 }
 #results summary { cursor: pointer; font-weight: 600 }
 #results details .details-body { margin-top: 9px; font-size: 13px; color: var(--text-soft) }
 #results details ul { margin-left: 18px }
 
-/* ------------------------------------------------------------------ footer */
-.site-footer { border-top: 1px solid var(--header-line); padding: 20px 0 34px }
-.site-footer p { font-size: 12.5px; color: var(--on-page-soft); max-width: 640px }
-
-/* ------------------------------------------------------------------- layar sempit */
+/* -------------------------------------------------------------- layar sempit */
 @media (max-width: 620px) {
-  .header-inner { flex-wrap: wrap; gap: 12px }
-  .header-title { flex-basis: 100%; order: 3 }
+  .header-inner { padding: 12px 16px; gap: 12px }
+  .site-header h1 { font-size: 17px }
   .stats { grid-template-columns: repeat(2, 1fr) }
 }
-.card-cleanup { border-top: 3px solid var(--amber) }

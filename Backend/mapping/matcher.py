@@ -144,15 +144,13 @@ class Matcher:
         # exact
         for k in self.targets:
             if p == simplify(k.clean_name):
-                return Match(k.letter, k.clean_name, 1.0, "exact",
-                             "nama parameter sama dengan kolom standar")
+                return Match(k.letter, k.clean_name, 1.0, "exact", "nama parameter sama dengan kolom standar")
 
         # dictionary
         for k in self.targets:
             for synonym in SYNONYMS.get(k.letter, []):
                 if p == simplify(synonym):
-                    return Match(k.letter, k.clean_name, 0.97, "dictionary",
-                                 "terdaftar sebagai padanan " + k.clean_name)
+                    return Match(k.letter, k.clean_name, 0.97, "dictionary", "terdaftar sebagai padanan " + k.clean_name)
 
         # semantic
         ranking = self._rank(pdf_param, p)
@@ -169,8 +167,7 @@ class Matcher:
         if ranking:
             closest = " (paling dekat: %s, skor %.2f)" % (
                 ranking[0][0].clean_name, ranking[0][1])
-        return Match(None, None, ranking[0][1] if ranking else 0.0, "no_match",
-                     "tidak ada parameter yang cocok di excelnya" + closest)
+        return Match(None, None, ranking[0][1] if ranking else 0.0, "no_match", "tidak ada parameter yang cocok di excelnya" + closest)
 
     def _rank(self, original: str, cleaned: str) -> list[tuple[Column, float]]:
         semantic = None

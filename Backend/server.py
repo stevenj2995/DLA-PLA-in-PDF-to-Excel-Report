@@ -1,14 +1,3 @@
-"""HTTP entry point. Started by run.py -- never run this file directly.
-
-The page itself is hosted on Vercel (Frontend/), but every PDF is processed
-here. Uploads never pass through Vercel: the browser posts them straight to
-this backend tunnel address.
-
-How long uploads live:
-  - the PDF is deleted AS SOON AS its Excel exists (seconds)
-  - the Excel is deleted after SESSION_TTL, or when the server stops
-  - orphan folders from earlier runs are swept when the server starts
-"""
 from __future__ import annotations
 
 import atexit
@@ -29,32 +18,19 @@ from fastapi.responses import FileResponse
 from . import pipeline, settings
 from .extract import pdf_reader
 
-# ------------------------------------------------------------------- limits
-# This backend is reachable from the internet through the tunnel, so cap what
-# may come in.
+# limits
 MAX_FILES = 10
-MAX_FILE_BYTES = 15 * 1024 * 1024      # 15 MB per PDF
-MAX_TOTAL_BYTES = 50 * 1024 * 1024       # 50 MB sekali proses
-SESSION_TTL = 15 * 60                        # hasil dibuang setelah 15 menit
-SWEEP_INTERVAL = 60                             # penyapu latar jalan tiap 1 menit
+MAX_FILE_BYTES = 15 * 1024 * 1024 # 15 MB per PDF
+MAX_TOTAL_BYTES = 50 * 1024 * 1024 # 50 MB sekali proses
+SESSION_TTL = 15 * 60
+SWEEP_INTERVAL = 60 
 
-# When set, visitors must enter this code before anything is processed:
-#   set ACCESS_CODE=rahasia123
-# Empty means anyone holding the link can upload.
 ACCESS_CODE = os.environ.get("ACCESS_CODE", "").strip()
 
-# Extra origins allowed to call this backend (your own domain, etc.),
-# comma separated in the ALLOWED_ORIGINS environment variable.
 ALLOWED_ORIGINS = [
     a.strip() for a in os.environ.get("ALLOWED_ORIGINS", "").split(",") if a.strip()
 ]
 
-# Always allowed:
-#   - every *.vercel.app subdomain, because each deploy gets a fresh preview
-#     address and your fixed domain may not exist yet
-#   - localhost AND 127.0.0.1 on any port, for local testing. Both must be
-#     listed: browsers treat them as DIFFERENT origins, so allowing only one
-#     makes local testing fail on CORS.
 ORIGIN_PATTERN = r"https://[\w-]+\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?"
 
 app = FastAPI(title="DLA to Excel Report", docs_url=None, redoc_url=None)
@@ -66,24 +42,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# The pipeline swaps settings.OUTPUT_DIR/MEMORY_DIR while it runs, so only one
-# request may run at a time -- otherwise two would overwrite each other.
 _lock = threading.Lock()
 _sessions: dict[str, dict] = {}
 
 
 @contextmanager
 def isolated_workspace():
-    """Point OUTPUT_DIR and MEMORY_DIR at a throwaway folder.
-
-    Trained company profiles are copied in so detection stays accurate, but
-    anything learned from a visitor PDF stops at that copy and is deleted with
-    it. The real Memory/ on this laptop is never touched.
-    """
     original_output, original_memory = settings.OUTPUT_DIR, settings.MEMORY_DIR
     workspace = Path(tempfile.mkdtemp(prefix="dla_"))
-    # set True by the caller when the folder is still needed for downloads;
-    # otherwise (e.g. the run failed halfway) it is dropped immediately
     keep = {"keep": False}
     try:
         settings.OUTPUT_DIR = workspace / "OUTPUT"
@@ -108,7 +74,6 @@ def _drop_expired_sessions() -> None:
 
 
 def _drop_all_sessions() -> None:
-    """Called when the server stops -- leave nobody files behind."""
     for sid in list(_sessions):
         d = _sessions.pop(sid, None)
         if d:
@@ -116,17 +81,6 @@ def _drop_all_sessions() -> None:
 
 
 def _sweep_orphan_folders() -> int:
-    """Drop dla_* folders no session owns any more.
-
-    Safety net for a server that dies suddenly (power cut, laptop closed): the
-    session list dies with the process, so without this sweep a visitor PDF
-    folder would never be deleted.
-
-    Only folders older than SESSION_TTL are dropped. That age limit matters:
-    without it, starting a second server -- or merely importing this module
-    from another script -- would wipe sessions live in the first one, and its
-    visitors would suddenly see "result expired".
-    """
     n = 0
     cutoff = time.time() - SESSION_TTL
     active = {str(d["workspace"]) for d in _sessions.values()}
@@ -144,9 +98,6 @@ def _sweep_orphan_folders() -> int:
 
 
 def _background_sweeper() -> None:
-    # Sweeps both: expired sessions AND orphan folders. The second must not be
-    # skipped -- an orphan is not in _sessions, so sweeping sessions alone
-    # leaves it sitting there until the next server start, possibly days.
     while True:
         time.sleep(SWEEP_INTERVAL)
         try:
@@ -155,10 +106,6 @@ def _background_sweeper() -> None:
         except Exception:
             pass
 
-
-# Runs at import, not under __main__ -- run.py starts this through
-# "uvicorn Backend.server:app", so a __main__ block would never execute and
-# the cleanup would never happen.
 _ORPHANS_REMOVED = _sweep_orphan_folders()
 
 threading.Thread(target=_background_sweeper, daemon=True).start()
@@ -178,7 +125,6 @@ def _delete_all_pdfs(workspace: Path) -> int:
 
 @app.get("/api/status")
 def status():
-    """Drives the backend-live indicator on the page."""
     try:
         template = settings.template_file().name
     except FileNotFoundError:
@@ -197,8 +143,6 @@ def status():
 @app.post("/api/process")
 async def process(email: str = Form(...), files: list[UploadFile] = File(...),
                  code: str = Form("")):
-    # compare_digest so the check duration cannot leak how many leading
-    # characters were already right
     if ACCESS_CODE and not hmac.compare_digest(code.strip(), ACCESS_CODE):
         raise HTTPException(403, "Kode akses salah.")
     if not email.strip():

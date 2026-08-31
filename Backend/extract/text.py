@@ -190,9 +190,6 @@ def normalize(name: str) -> str:
     s = re.sub(r"[^A-Z0-9\s]", " ", s)
     return " ".join(k for k in s.split() if k not in _ENTITY_FORMS)
 
-# Regional branches fold into their parent: "Pelabuhan Indonesia Regional 4"
-# and "Pelabuhan Indonesia" land in the same group. The number may be roman
-# (REGIONAL III) or plain (REGIONAL 4) -- real DLAs use both.
 _NUMBER = rf"(?:{_ROMAN}|\d{{1,2}})"
 
 
@@ -262,9 +259,6 @@ def find_company_names(text: str) -> list[tuple[str, int]]:
             result.append((f"PT {name}", m.start()))
     return result
 
-# Matched on WHOLE WORDS, never substrings. With substrings "Name of
-# Reinsured" also reads as "insured", and the reinsurer gets mistaken for
-# the policy holder.
 def _has_label(window: str, labels: list[str]) -> bool:
     return any(re.search(rf"\b{re.escape(l)}\b", window) for l in labels)
 
@@ -288,11 +282,6 @@ def _clean_label(s: str) -> str:
     return " ".join(s.lower().replace(".", "").split())
 
 
-# PRIMARY PATH. If the document says "Name of Insured : X", then X IS the
-# insured -- no scoring needed. Labels must match WHOLE, because "Insured
-# Interest", "Insured Period" and "Reinsured" all contain "insured" but are
-# not the insured name. Runs on position-rebuilt lines so label and value
-# stay side by side.
 def insured_name_from_label(lines: list[str]) -> tuple[str | None, str | None]:
     for i, b in enumerate(lines):
         m = RE_LABEL_VALUE.match(b)
@@ -354,9 +343,6 @@ def detect(lines: list[str], *, file_name: str = "") -> DetectionResult:
                 k.score += 2.0
                 k.reasons.append("cocok dengan nama file")
 
-    # FALLBACK PATH. What we want is ALWAYS the insured -- the policy holder
-    # who suffered the loss. Never the report's author (adjuster/broker) and
-    # never the addressee.
     for k in score.values():
         k.score += 6.0 if k.role == "tertanggung" else -2.0
         k.score = max(k.score, 0.0)
@@ -381,6 +367,5 @@ def detect(lines: list[str], *, file_name: str = "") -> DetectionResult:
             f"Dua kandidat nyaris seimbang: '{ranked[0].name}' vs '{ranked[1].name}'")
     if re.search(rf"\b{_ROMAN}\b", result.name or ""):
         result.warnings.append(
-            "Nama mengandung angka romawi (I/II/III/IV) yang gampang tertukar "
-            "saat OCR - mohon dicek folder tujuannya")
+            "Nama mengandung angka romawi yang gampang tertukar saat OCR")
     return result

@@ -139,7 +139,7 @@ def run(
     result.notes.append(f"Jalur analisis makna: {matcher.mode}")
     if not ocr_available():
         result.notes.append(
-            "OCR belum terpasang - PDF hasil scan tidak bisa dibaca isinya.")
+            "OCR belum terpasang")
 
     pdf_files = memory.list_pdfs(input_folder)
     if not pdf_files:

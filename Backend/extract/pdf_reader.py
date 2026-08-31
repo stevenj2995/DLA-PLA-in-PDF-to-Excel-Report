@@ -149,8 +149,7 @@ def read_pdf(path: str | Path, *, use_ocr: bool = True) -> PdfDocument:
     if needs_ocr and use_ocr:
         if not ocr_available():
             result.warnings.append(
-                "PDF ini hasil scan (nyaris tanpa teks) tapi OCR belum terpasang. "
-                "Pasang Tesseract OCR dulu, isinya tidak bisa dibaca."
+                "PDF ini hasil scan tapi OCR belum terpasang."
             )
         else:
             for h in result.pages:

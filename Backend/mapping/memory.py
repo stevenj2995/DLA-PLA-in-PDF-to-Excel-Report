@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -80,8 +79,6 @@ class Profile:
     processed_refs: list[str] = field(default_factory=list)
     created: str = field(default_factory=_now)
     updated: str = field(default_factory=_now)
-    note: str = ("File ini boleh diedit manual. Ubah 'grup' atau 'folder' "
-                    "kalau sistem salah menempatkan, lalu simpan.")
 
     def __post_init__(self):
         self.key = self.key or normalize(self.official_name)

@@ -27,18 +27,6 @@ function humanSize(b) {
   return (b / 1024 / 1024).toFixed(1) + " MB";
 }
 
-// ---------------------------------------------------------------------- tema
-const themeToggle = $("theme-toggle");
-themeToggle.addEventListener("click", () => {
-  const root = document.documentElement;
-  const isDark = root.getAttribute("data-theme")
-    ? root.getAttribute("data-theme") === "dark"
-    : matchMedia("(prefers-color-scheme: dark)").matches;
-  const next = isDark ? "light" : "dark";
-  root.setAttribute("data-theme", next);
-  try { localStorage.setItem("theme", next); } catch (e) {}
-});
-
 // ------------------------------------------------------------- cek backend
 let limits = { files: 10, size: 15 };
 let needsCode = false;
@@ -51,8 +39,6 @@ async function checkBackend() {
     const d = await r.json();
 
     limits = { files: d.max_files, size: d.max_file_mb };
-    $("max-files").textContent = d.max_files;
-    $("max-size").textContent = d.max_file_mb;
     if (d.session_minutes) {
       document.querySelectorAll(".session-minutes")
         .forEach((el) => { el.textContent = d.session_minutes; });
