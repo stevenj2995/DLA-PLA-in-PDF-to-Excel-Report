@@ -5,9 +5,9 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 
-from . import config
+from .. import settings
 
-BULAN_ID = {
+MONTHS_ID = {
     "januari": 1, "jan": 1,
     "februari": 2, "pebruari": 2, "feb": 2,
     "maret": 3, "mar": 3,
@@ -21,7 +21,7 @@ BULAN_ID = {
     "november": 11, "nov": 11, "nopember": 11, 
     "desember": 12, "des": 12, "dec" : 12, "december" : 12
 }
-BULAN_EN = {
+MONTHS_EN = {
     "january": 1, "jan": 1,
     "february": 2, "feb": 2,
     "march": 3,  "mar": 3,
@@ -35,96 +35,95 @@ BULAN_EN = {
     "november": 11, "nov": 11,
     "december": 12, "dec": 12
 }
-BULAN = {**BULAN_EN, **BULAN_ID}
+MONTHS = {**MONTHS_EN, **MONTHS_ID}
 
 # "Jakarta, 22 Agustus 2026" / "Surabaya, 22 August 2026"
-RE_KAKI_SURAT = re.compile(
-    r"(?P<kota>[A-Z][A-Za-z\.\s]{2,30}?)\s*,\s*"
-    r"(?P<hari>\d{1,2})\s+(?P<bulan>[A-Za-z]{3,12})\s+(?P<tahun>\d{4})"
+RE_LETTER_FOOTER = re.compile(
+    r"(?P<city>[A-Z][A-Za-z\.\s]{2,30}?)\s*,\s*"
+    r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3,12})\s+(?P<year>\d{4})"
 )
-RE_TGL_TEKS = re.compile(r"\b(\d{1,2})\s+([A-Za-z]{3,12})\s+(\d{4})\b")
-RE_TGL_ANGKA = re.compile(r"\b(\d{1,4})[/\-\.](\d{1,2})[/\-\.](\d{2,4})\b")
-RE_JAM = re.compile(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)\b")
+RE_DATE_WORDS = re.compile(r"\b(\d{1,2})\s+([A-Za-z]{3,12})\s+(\d{4})\b")
+RE_DATE_NUMERIC = re.compile(r"\b(\d{1,4})[/\-\.](\d{1,2})[/\-\.](\d{2,4})\b")
+RE_TIME = re.compile(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)\b")
 
 
-def _tgl(y: int, m: int, d: int) -> date | None:
+def _date(y: int, m: int, d: int) -> date | None:
     try:
         return date(y, m, d)
     except ValueError:
         return None
 
 
-# baca tanggal dari berbagai bentuk penulisan Indonesia maupun Inggris
-def parse_tanggal(teks: str) -> date | None:
-    if not teks:
+def parse_date(text: str) -> date | None:
+    if not text:
         return None
-    s = str(teks).strip()
+    s = str(text).strip()
 
-    m = RE_TGL_TEKS.search(s)
+    m = RE_DATE_WORDS.search(s)
     if m:
-        bulan = BULAN.get(m.group(2).lower())
-        if bulan:
-            hasil = _tgl(int(m.group(3)), bulan, int(m.group(1)))
-            if hasil:
-                return hasil
+        month = MONTHS.get(m.group(2).lower())
+        if month:
+            result = _date(int(m.group(3)), month, int(m.group(1)))
+            if result:
+                return result
 
-    m = RE_TGL_ANGKA.search(s)
+    m = RE_DATE_NUMERIC.search(s)
     if m:
         a, b, c = (int(x) for x in m.groups())
         if len(m.group(1)) == 4:
-            return _tgl(a, b, c)
-        tahun = c + 2000 if c < 100 else c
-        return _tgl(tahun, b, a) or _tgl(tahun, a, b)  # dd/mm lalu mm/dd
+            return _date(a, b, c)
+        year = c + 2000 if c < 100 else c
+        return _date(year, b, a) or _date(year, a, b)  # try dd/mm first, then mm/dd
     return None
 
-def tanggal_kaki_surat(teks: str) -> tuple[date | None, str | None, str | None]:
-    for m in reversed(list(RE_KAKI_SURAT.finditer(teks or ""))):
-        bulan = BULAN.get(m.group("bulan").lower())
-        if not bulan:
+def letter_footer_date(text: str) -> tuple[date | None, str | None, str | None]:
+    for m in reversed(list(RE_LETTER_FOOTER.finditer(text or ""))):
+        month = MONTHS.get(m.group("month").lower())
+        if not month:
             continue
-        d = _tgl(int(m.group("tahun")), bulan, int(m.group("hari")))
+        d = _date(int(m.group("year")), month, int(m.group("day")))
         if d:
-            kota = " ".join(m.group("kota").split()).strip(" .,")
-            return d, kota, m.group(0)
+            city = " ".join(m.group("city").split()).strip(" .,")
+            return d, city, m.group(0)
     return None, None, None
 
-def format_tanggal(d: date | None, gaya: str = "iso") -> str | None:
+def format_date(d: date | None, style: str = "iso") -> str | None:
     if d is None:
         return None
-    if gaya == "asli":
-        nama = [k for k, v in BULAN_ID.items() if v == d.month and len(k) > 3]
-        return f"{d.day} {nama[0].capitalize() if nama else d.month} {d.year}"
+    if style == "original":
+        name = [k for k, v in MONTHS_ID.items() if v == d.month and len(k) > 3]
+        return f"{d.day} {name[0].capitalize() if name else d.month} {d.year}"
     return d.strftime("%Y-%m-%d")
 
 
-def parse_jam(teks: str) -> str | None:
-    m = RE_JAM.search(str(teks or ""))
+def parse_time(text: str) -> str | None:
+    m = RE_TIME.search(str(text or ""))
     return f"{int(m.group(1)):02d}:{m.group(2)}" if m else None
 
 
 # "Rp 1.024.770.200,00" -> 1024770200.0
-def parse_uang(teks: str) -> float | None:
-    if teks is None:
+def parse_money(text: str) -> float | None:
+    if text is None:
         return None
-    if isinstance(teks, (int, float)):
-        return float(teks)
+    if isinstance(text, (int, float)):
+        return float(text)
 
-    s = re.sub(r"(?i)\b(rp|idr|usd|sgd)\b\.?", " ", str(teks))
+    s = re.sub(r"(?i)\b(rp|idr|usd|sgd)\b\.?", " ", str(text))
     s = re.sub(r"[^\d,.\-]", "", s).strip()
     if not s or not re.search(r"\d", s):
         return None
 
-    ada_titik, ada_koma = "." in s, "," in s
-    if ada_titik and ada_koma:
-        desimal = "," if s.rfind(",") > s.rfind(".") else "."
-        ribuan = "." if desimal == "," else ","
-        s = s.replace(ribuan, "").replace(desimal, ".")
-    elif ada_koma:
-        ekor = s.split(",")[-1] # 1-2 angka di belakang = desimal
-        s = s.replace(",", "." if len(ekor) <= 2 and s.count(",") == 1 else "")
-    elif ada_titik:
-        ekor = s.split(".")[-1]
-        if not (len(ekor) <= 2 and s.count(".") == 1):
+    has_dot, has_comma = "." in s, "," in s
+    if has_dot and has_comma:
+        decimal = "," if s.rfind(",") > s.rfind(".") else "."
+        thousands = "." if decimal == "," else ","
+        s = s.replace(thousands, "").replace(decimal, ".")
+    elif has_comma:
+        tail = s.split(",")[-1] # 1-2 angka di belakang = desimal
+        s = s.replace(",", "." if len(tail) <= 2 and s.count(",") == 1 else "")
+    elif has_dot:
+        tail = s.split(".")[-1]
+        if not (len(tail) <= 2 and s.count(".") == 1):
             s = s.replace(".", "")
     try:
         return float(s)
@@ -132,255 +131,256 @@ def parse_uang(teks: str) -> float | None:
         return None
 
 
-def parse_kode_pos(teks: str) -> str | None:
-    m = re.search(r"\b(\d{5})\b", str(teks or ""))
+def parse_postal_code(text: str) -> str | None:
+    m = re.search(r"\b(\d{5})\b", str(text or ""))
     return m.group(1) if m else None
 
-def parse_persen(teks: str) -> str | None:
-    m = re.search(r"(\d+(?:[.,]\d+)?)\s*%", str(teks or ""))
+def parse_percent(text: str) -> str | None:
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*%", str(text or ""))
     return m.group(1).replace(",", ".") + "%" if m else None
 
 
-def rapikan_teks(teks: str, maks: int = 500) -> str:
-    return " ".join(str(teks or "").split())[:maks]
+def clean_text(text: str, limit: int = 500) -> str:
+    return " ".join(str(text or "").split())[:limit]
 
 
-# membaca nama perusahaan
 _SP = r"[^\S\n]"
-_KATA = r"[A-Z][A-Za-z0-9&'\.\-]*"
+_WORD = r"[A-Z][A-Za-z0-9&'\.\-]*"
 
-RE_PERUSAHAAN = re.compile(
+RE_COMPANY = re.compile(
     rf"\b(?:PT|CV|UD|PD)\.?{_SP}+"
-    rf"(?P<nama>{_KATA}(?:{_SP}+(?:{_KATA}|dan|and|of|de)){{0,6}})"
-    rf"(?P<ekor>{_SP}*\((?:Persero|PERSERO|Tbk|TBK)\))?"
+    rf"(?P<name>{_WORD}(?:{_SP}+(?:{_WORD}|dan|and|of|de)){{0,6}})"
+    rf"(?P<tail>{_SP}*\((?:Persero|PERSERO|Tbk|TBK)\))?"
 )
-# bentuk terbalik
-RE_PERUSAHAAN_BALIK = re.compile(
-    rf"(?P<nama>{_KATA}(?:{_SP}+[A-Za-z0-9&'\.\-()]+){{0,6}}?){_SP}*,{_SP}*(?:PT|CV)\.?\b"
+# reversed form: "Nama Perusahaan, PT"
+RE_COMPANY_REVERSED = re.compile(
+    rf"(?P<name>{_WORD}(?:{_SP}+[A-Za-z0-9&'\.\-()]+){{0,6}}?){_SP}*,{_SP}*(?:PT|CV)\.?\b"
 )
 
-# kata yang menandakan nama sudah habis dan ini mulai label kolom berikutnya
-RE_POTONG = re.compile(
+# words that mean the name has ended and the next field label has started
+RE_NEXT_LABEL = re.compile(
     r"\b(?:Jl|Jalan|Telp|Telepon|Fax|Email|NPWP|Nomor|No|Nama|Alamat|Tanggal|Tgl|"
     r"Date|Time|Policy|Polis|Lokasi|Penyebab|Jenis|Nilai|Kode|Kepada|Perihal|Hal)\b",
     re.I,
 )
 
-_TERLARANG_WINDOWS = r'[<>:"/\\|?*\x00-\x1f]'
-_NAMA_CADANGAN = {
+_WINDOWS_FORBIDDEN = r'[<>:"/\\|?*\x00-\x1f]'
+_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
-_ROMAWI = r"(?:I{1,3}|IV|VI{0,3}|IX|XI{0,3})"
-_BADAN = {"PT", "CV", "UD", "PD", "PERSERO", "TBK", "LTD", "INC", "LLC"}
+_ROMAN = r"(?:I{1,3}|IV|VI{0,3}|IX|XI{0,3})"
+_ENTITY_FORMS = {"PT", "CV", "UD", "PD", "PERSERO", "TBK", "LTD", "INC", "LLC"}
 
 
-# samakan tanda hubung/kutip aneh supaya tidak bikin nama folder gagal
-def _rapikan_unicode(s: str) -> str:
+# normalise odd dashes and quotes -- they break folder names on Windows
+def _normalize_unicode(s: str) -> str:
     s = unicodedata.normalize("NFKC", s)
-    for aneh, ganti in (("–", "-"), ("—", "-"), ("−", "-"),
+    for odd, repl in (("–", "-"), ("—", "-"), ("−", "-"),
                         ("‘", "'"), ("’", "'"),
                         ("“", '"'), ("”", '"'), ("�", " ")):
-        s = s.replace(aneh, ganti)
+        s = s.replace(odd, repl)
     return " ".join(s.split())
 
 
-def normalisasi(nama: str) -> str:
-    s = _rapikan_unicode(nama).upper()
+def normalize(name: str) -> str:
+    s = _normalize_unicode(name).upper()
     s = re.sub(r"\(([^)]*)\)", r" \1 ", s)
     s = re.sub(r"[^A-Z0-9\s]", " ", s)
-    return " ".join(k for k in s.split() if k not in _BADAN)
+    return " ".join(k for k in s.split() if k not in _ENTITY_FORMS)
 
-# Cabang regional dikumpulkan ke induknya: "Pelabuhan Indonesia Regional 4"
-# dan "Pelabuhan Indonesia" masuk grup yang sama. Nomornya bisa angka romawi
-# (REGIONAL III) maupun angka biasa (REGIONAL 4) - dua-duanya dipakai di DLA.
-_NOMOR = rf"(?:{_ROMAWI}|\d{{1,2}})"
-
-
-def nama_grup(nama: str) -> str:
-    inti = normalisasi(nama)
-    inti = re.sub(rf"\s+REGIONAL(\s*-?\s*{_NOMOR})*\s*$", "", inti)
-    inti = re.sub(rf"(\s+{_ROMAWI})+\s*$", "", inti)
-    inti = re.sub(r"\s+\d+\s*$", "", inti)
-    return (inti.strip() or normalisasi(nama)).title()
+# Regional branches fold into their parent: "Pelabuhan Indonesia Regional 4"
+# and "Pelabuhan Indonesia" land in the same group. The number may be roman
+# (REGIONAL III) or plain (REGIONAL 4) -- real DLAs use both.
+_NUMBER = rf"(?:{_ROMAN}|\d{{1,2}})"
 
 
-def nama_folder(nama: str, maks: int = 90) -> str:
-    s = re.sub(_TERLARANG_WINDOWS, " ", _rapikan_unicode(nama))
+def group_name(name: str) -> str:
+    core = normalize(name)
+    core = re.sub(rf"\s+REGIONAL(\s*-?\s*{_NUMBER})*\s*$", "", core)
+    core = re.sub(rf"(\s+{_ROMAN})+\s*$", "", core)
+    core = re.sub(r"\s+\d+\s*$", "", core)
+    return (core.strip() or normalize(name)).title()
+
+
+def folder_name(name: str, limit: int = 90) -> str:
+    s = re.sub(_WINDOWS_FORBIDDEN, " ", _normalize_unicode(name))
     s = " ".join(s.split()).rstrip(" .")
-    if len(s) > maks:
-        s = s[:maks].rstrip(" .")
-    if s.upper().split(".")[0] in _NAMA_CADANGAN:
+    if len(s) > limit:
+        s = s[:limit].rstrip(" .")
+    if s.upper().split(".")[0] in _RESERVED_NAMES:
         s = f"_{s}"
     return s or "TANPA_NAMA"
 
 
 @dataclass
-class Kandidat:
-    nama: str
-    skor: float = 0.0
-    posisi: int = -1
-    peran: str = ""
-    alasan: list[str] = field(default_factory=list)
+class Candidate:
+    name: str
+    score: float = 0.0
+    position: int = -1
+    role: str = ""
+    reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
-class HasilDeteksi:
-    nama: str | None = None
-    keyakinan: float = 0.0
-    kandidat: list[Kandidat] = field(default_factory=list)
-    peringatan: list[str] = field(default_factory=list)
+class DetectionResult:
+    name: str | None = None
+    confidence: float = 0.0
+    candidates: list[Candidate] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
-    def tingkat(self) -> str:
-        if self.nama and self.keyakinan >= config.YAKIN:
-            return "yakin"
-        if self.nama and self.keyakinan >= config.RAGU:
-            return "ragu"
-        return "tidak_terdeteksi"
+    def level(self) -> str:
+        if self.name and self.confidence >= settings.CONFIDENT:
+            return "confident"
+        if self.name and self.confidence >= settings.UNSURE:
+            return "unsure"
+        return "undetected"
 
 
-def _tujuan(nama: str) -> bool:
-    n = normalisasi(nama)
-    return any(normalisasi(t) in n for t in config.PERUSAHAAN_TUJUAN)
+def _is_own_company(name: str) -> bool:
+    n = normalize(name)
+    return any(normalize(t) in n for t in settings.OWN_COMPANY_NAMES)
 
 
-# buang ekor yang sebenarnya label kolom berikutnya
-def _potong(nama: str) -> str:
-    m = RE_POTONG.search(nama)
-    return " ".join(nama[:m.start()].split()) if m else " ".join(nama.split())
+# drop the tail that is really the next field label
+def _cut_at_next_label(name: str) -> str:
+    m = RE_NEXT_LABEL.search(name)
+    return " ".join(name[:m.start()].split()) if m else " ".join(name.split())
 
 
-# semua penyebutan nama perusahaan beserta posisinya di teks
-def cari_nama_perusahaan(teks: str) -> list[tuple[str, int]]:
-    hasil: list[tuple[str, int]] = []
-    for m in RE_PERUSAHAAN.finditer(teks):
-        nama = _potong(m.group("nama"))
-        if len(normalisasi(nama)) >= 4:
-            hasil.append((f"PT {nama}{m.group('ekor') or ''}".strip(), m.start()))
-    for m in RE_PERUSAHAAN_BALIK.finditer(teks):
-        nama = _potong(m.group("nama"))
-        if len(normalisasi(nama)) >= 4:
-            hasil.append((f"PT {nama}", m.start()))
-    return hasil
+def find_company_names(text: str) -> list[tuple[str, int]]:
+    result: list[tuple[str, int]] = []
+    for m in RE_COMPANY.finditer(text):
+        name = _cut_at_next_label(m.group("name"))
+        if len(normalize(name)) >= 4:
+            result.append((f"PT {name}{m.group('tail') or ''}".strip(), m.start()))
+    for m in RE_COMPANY_REVERSED.finditer(text):
+        name = _cut_at_next_label(m.group("name"))
+        if len(normalize(name)) >= 4:
+            result.append((f"PT {name}", m.start()))
+    return result
 
-# Dicocokkan per KATA UTUH, bukan potongan teks. Kalau pakai potongan,
-# "Name of Reinsured" ikut terbaca sebagai "insured" - dan perusahaan yang
-# menyerahkan risiko (reasuradur) tertukar dengan pemilik polis.
-def _ada_label(cuplik: str, daftar: list[str]) -> bool:
-    return any(re.search(rf"\b{re.escape(l)}\b", cuplik) for l in daftar)
+# Matched on WHOLE WORDS, never substrings. With substrings "Name of
+# Reinsured" also reads as "insured", and the reinsurer gets mistaken for
+# the policy holder.
+def _has_label(window: str, labels: list[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(l)}\b", window) for l in labels)
 
 
-def _label_sebelum(teks: str, posisi: int, jarak: int = 60) -> str:
-    cuplik = teks[max(0, posisi - jarak):posisi].lower()
-    if _ada_label(cuplik, config.LABEL_TERTANGGUNG):
+def _label_before(text: str, position: int, distance: int = 60) -> str:
+    window = text[max(0, position - distance):position].lower()
+    if _has_label(window, settings.INSURED_HINT_LABELS):
         return "tertanggung"
-    if _ada_label(cuplik, config.LABEL_TUJUAN):
+    if _has_label(window, settings.RECIPIENT_HINT_LABELS):
         return "tujuan"
     return ""
 
-RE_LABEL_NILAI = re.compile(r"^\s*(?P<label>[^:：]{2,50})[:：]\s*(?P<nilai>.*)$")
+RE_LABEL_VALUE = re.compile(r"^\s*(?P<label>[^:：]{2,50})[:：]\s*(?P<value>.*)$")
 
-# "PT A and/or PT B and/or PT C" atau "PT A QQ PT B" -> ambil yang pertama saja.
-# Yang disebut duluan adalah tertanggung utama; sisanya pihak yang ikut.
-RE_PIHAK_LAIN = re.compile(r"(?i)\s+(?:and\s*/\s*or|dan\s*/\s*atau|q\.?q\.?)\s+")
+# "PT A and/or PT B" or "PT A QQ PT B" -> keep the first only. The one named
+# first is the main insured; the rest are joined parties.
+RE_OTHER_PARTIES = re.compile(r"(?i)\s+(?:and\s*/\s*or|dan\s*/\s*atau|q\.?q\.?)\s+")
 
 
-def _bersih_label(s: str) -> str:
+def _clean_label(s: str) -> str:
     return " ".join(s.lower().replace(".", "").split())
 
 
-# JALUR UTAMA. Kalau dokumennya menulis "Name of Insured : X", maka X ADALAH
-# tertanggungnya - tidak perlu ditebak lewat skor. Dijalankan atas baris hasil
-# susun-posisi, supaya label dan nilainya tetap bersebelahan.
-def nama_tertanggung_dari_label(baris: list[str]) -> tuple[str | None, str | None]:
-    for i, b in enumerate(baris):
-        m = RE_LABEL_NILAI.match(b)
-        if not m or _bersih_label(m.group("label")) not in config.LABEL_NAMA_TERTANGGUNG:
+# PRIMARY PATH. If the document says "Name of Insured : X", then X IS the
+# insured -- no scoring needed. Labels must match WHOLE, because "Insured
+# Interest", "Insured Period" and "Reinsured" all contain "insured" but are
+# not the insured name. Runs on position-rebuilt lines so label and value
+# stay side by side.
+def insured_name_from_label(lines: list[str]) -> tuple[str | None, str | None]:
+    for i, b in enumerate(lines):
+        m = RE_LABEL_VALUE.match(b)
+        if not m or _clean_label(m.group("label")) not in settings.INSURED_NAME_LABELS:
             continue
 
-        nilai = m.group("nilai").strip()
-        # label tanpa nilai di kanannya -> nilainya ada di baris bawahnya
-        if not nilai and i + 1 < len(baris) and not RE_LABEL_NILAI.match(baris[i + 1]):
-            nilai = baris[i + 1].strip()
+        value = m.group("value").strip()
+        # label with nothing to its right -> the value is on the next line
+        if not value and i + 1 < len(lines) and not RE_LABEL_VALUE.match(lines[i + 1]):
+            value = lines[i + 1].strip()
 
-        nilai = RE_PIHAK_LAIN.split(_potong(nilai))[0].strip(" ,.;-")
-        if len(normalisasi(nilai)) >= 4 and not _tujuan(nilai):
-            return nilai, " ".join(m.group("label").split())
+        value = RE_OTHER_PARTIES.split(_cut_at_next_label(value))[0].strip(" ,.;-")
+        if len(normalize(value)) >= 4 and not _is_own_company(value):
+            return value, " ".join(m.group("label").split())
     return None, None
 
 
-def deteksi(baris: list[str], *, nama_file: str = "") -> HasilDeteksi:
-    hasil = HasilDeteksi()
-    teks = "\n".join(baris)
-    if not teks.strip():
-        hasil.peringatan.append("PDF tidak punya teks yang bisa dibaca")
-        return hasil
+def detect(lines: list[str], *, file_name: str = "") -> DetectionResult:
+    result = DetectionResult()
+    text = "\n".join(lines)
+    if not text.strip():
+        result.warnings.append("PDF tidak punya teks yang bisa dibaca")
+        return result
 
-    nama, label = nama_tertanggung_dari_label(baris)
-    if nama:
-        hasil.nama = nama
-        hasil.keyakinan = 1.0
-        hasil.kandidat = [Kandidat(nama=nama, skor=1.0, peran="tertanggung",
-                                   alasan=[f"diambil dari label '{label}'"])]
-        return hasil
+    name, label = insured_name_from_label(lines)
+    if name:
+        result.name = name
+        result.confidence = 1.0
+        result.candidates = [Candidate(name=name, score=1.0, role="tertanggung",
+                                   reasons=[f"diambil dari label '{label}'"])]
+        return result
 
-    hasil.peringatan.append(
+    result.warnings.append(
         "Tidak ada label tertanggung (Insured Name / Name of Insured / "
         "Tertanggung) - nama ditebak dari sebaran nama di teks")
 
-    skor: dict[str, Kandidat] = {}
-    for nama, posisi in cari_nama_perusahaan(teks):
-        if _tujuan(nama):
+    score: dict[str, Candidate] = {}
+    for name, position in find_company_names(text):
+        if _is_own_company(name):
             continue
-        kunci = normalisasi(nama)
-        if not kunci:
+        key = normalize(name)
+        if not key:
             continue
 
-        k = skor.get(kunci)
+        k = score.get(key)
         if k is None:
-            k = skor[kunci] = Kandidat(nama=nama, posisi=posisi)
-        k.skor += 1.0
-        if posisi < k.posisi or k.posisi < 0:
-            k.posisi = posisi
+            k = score[key] = Candidate(name=name, position=position)
+        k.score += 1.0
+        if position < k.position or k.position < 0:
+            k.position = position
 
-        peran = _label_sebelum(teks, posisi)
-        if peran and not k.peran:
-            k.peran = peran
-            k.alasan.append(f"disebut sebagai {peran}")
+        role = _label_before(text, position)
+        if role and not k.role:
+            k.role = role
+            k.reasons.append(f"disebut sebagai {role}")
 
-        if nama_file and kunci in normalisasi(nama_file):
-            if "cocok dengan nama file" not in k.alasan:
-                k.skor += 2.0
-                k.alasan.append("cocok dengan nama file")
+        if file_name and key in normalize(file_name):
+            if "cocok dengan nama file" not in k.reasons:
+                k.score += 2.0
+                k.reasons.append("cocok dengan nama file")
 
-    # Yang dicari SELALU tertanggung - pemilik polis yang mengalami kerugian.
-    # Penerbit laporan (adjuster/broker) dan pihak tujuan tidak dipakai.
-    for k in skor.values():
-        k.skor += 6.0 if k.peran == "tertanggung" else -2.0
-        k.skor = max(k.skor, 0.0)
+    # FALLBACK PATH. What we want is ALWAYS the insured -- the policy holder
+    # who suffered the loss. Never the report's author (adjuster/broker) and
+    # never the addressee.
+    for k in score.values():
+        k.score += 6.0 if k.role == "tertanggung" else -2.0
+        k.score = max(k.score, 0.0)
 
-    urut = [k for k in sorted(skor.values(), key=lambda x: x.skor, reverse=True)
-            if k.skor > 0]
-    if not urut:
-        hasil.peringatan.append(
+    ranked = [k for k in sorted(score.values(), key=lambda x: x.score, reverse=True)
+            if k.score > 0]
+    if not ranked:
+        result.warnings.append(
             "Tidak ada nama perusahaan yang terbaca!")
-        return hasil
+        return result
 
-    total = sum(k.skor for k in urut) or 1.0
-    for k in urut:
-        k.skor = round(k.skor / total, 3)
+    total = sum(k.score for k in ranked) or 1.0
+    for k in ranked:
+        k.score = round(k.score / total, 3)
 
-    hasil.kandidat = urut
-    hasil.nama = urut[0].nama
-    hasil.keyakinan = urut[0].skor
+    result.candidates = ranked
+    result.name = ranked[0].name
+    result.confidence = ranked[0].score
 
-    if len(urut) > 1 and urut[0].skor - urut[1].skor < 0.15:
-        hasil.peringatan.append(
-            f"Dua kandidat nyaris seimbang: '{urut[0].nama}' vs '{urut[1].nama}'")
-    if re.search(rf"\b{_ROMAWI}\b", hasil.nama or ""):
-        hasil.peringatan.append(
+    if len(ranked) > 1 and ranked[0].score - ranked[1].score < 0.15:
+        result.warnings.append(
+            f"Dua kandidat nyaris seimbang: '{ranked[0].name}' vs '{ranked[1].name}'")
+    if re.search(rf"\b{_ROMAN}\b", result.name or ""):
+        result.warnings.append(
             "Nama mengandung angka romawi (I/II/III/IV) yang gampang tertukar "
             "saat OCR - mohon dicek folder tujuannya")
-    return hasil
+    return result

@@ -1,12 +1,3 @@
-"""Penyala backend untuk website publik. Jalankan: python mulai.py
-
-Skrip ini menyalakan dua hal sekaligus:
-  1. server.py  -- yang benar-benar memproses PDF, di laptop ini
-  2. terowongan -- supaya server itu bisa dihubungi dari halaman Vercel
-
-Selama jendela ini terbuka, websitenya hidup. Begitu ditutup, website akan
-menampilkan "Backend sedang tidak aktif" -- itu memang perilaku yang diharapkan.
-"""
 from __future__ import annotations
 
 import re
@@ -17,49 +8,49 @@ import threading
 import time
 from pathlib import Path
 
-from src import config
+from Backend import settings
 
 PORT = 8000
-BERKAS_CONFIG_WEB = Path(__file__).parent / "web" / "config.js"
+WEB_CONFIG_FILE = Path(__file__).parent / "Frontend" / "config.js"
 
 
-def cek_persiapan() -> bool:
+def check_setup() -> bool:
     ok = True
     try:
-        print(f"  [OK]   Template standar : {config.file_standar().name}")
+        print(f"  [OK]   Template standar : {settings.template_file().name}")
     except FileNotFoundError:
-        print(f"  [GAGAL] Tidak ada file .xlsx di folder {config.STANDAR_DIR}")
+        print(f"  [GAGAL] Tidak ada file .xlsx di folder {settings.TEMPLATE_DIR}")
         ok = False
 
-    from src.pdf_reader import ocr_tersedia
-    if ocr_tersedia():
+    from Backend.extract.pdf_reader import ocr_available
+    if ocr_available():
         print("  [OK]   OCR (Tesseract)   : aktif")
     else:
         print("  [!]    OCR (Tesseract)   : tidak aktif -- PDF hasil pindaian "
               "tidak akan terbaca")
 
     import os
-    if os.environ.get("KODE_AKSES", "").strip():
+    if os.environ.get("ACCESS_CODE", "").strip():
         print("  [OK]   Kode akses        : aktif -- hanya yang tahu kode bisa "
               "mengunggah")
     else:
         print("  [!]    Kode akses        : TIDAK dipasang -- siapa pun yang "
               "punya tautannya bisa")
         print("                             mengunggah. Pasang dengan: "
-              "set KODE_AKSES=kode-anda")
+              "set ACCESS_CODE=kode-anda")
     return ok
 
 
-def jalankan_server() -> subprocess.Popen:
+def start_server() -> subprocess.Popen:
     return subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "server:app",
+        [sys.executable, "-m", "uvicorn", "Backend.server:app",
          "--host", "0.0.0.0", "--port", str(PORT), "--log-level", "warning"],
         cwd=str(Path(__file__).parent),
     )
 
 
-def jalankan_terowongan(exe: str) -> tuple[subprocess.Popen, str | None]:
-    """Nyalakan cloudflared dan tangkap URL publik yang dicetaknya."""
+def start_tunnel(exe: str) -> tuple[subprocess.Popen, str | None]:
+    """Start cloudflared and capture the public URL it prints."""
     p = subprocess.Popen(
         [exe, "tunnel", "--url", f"http://localhost:{PORT}"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -67,15 +58,15 @@ def jalankan_terowongan(exe: str) -> tuple[subprocess.Popen, str | None]:
     )
     url: list[str | None] = [None]
 
-    def baca():
-        pola = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
-        for baris in p.stdout:
+    def reader():
+        pattern = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+        for line in p.stdout:
             if url[0] is None:
-                m = pola.search(baris)
+                m = pattern.search(line)
                 if m:
                     url[0] = m.group(0)
 
-    threading.Thread(target=baca, daemon=True).start()
+    threading.Thread(target=reader, daemon=True).start()
     for _ in range(60):
         if url[0]:
             break
@@ -83,28 +74,28 @@ def jalankan_terowongan(exe: str) -> tuple[subprocess.Popen, str | None]:
     return p, url[0]
 
 
-def perbarui_config_web(url: str) -> bool:
-    """Tulis URL terowongan ke web/config.js supaya tinggal commit & push."""
-    if not BERKAS_CONFIG_WEB.exists():
+def update_web_config(url: str) -> bool:
+    """Write the tunnel URL into Frontend/config.js, ready to commit and push."""
+    if not WEB_CONFIG_FILE.exists():
         return False
-    isi = BERKAS_CONFIG_WEB.read_text(encoding="utf-8")
-    baru = re.sub(r'window\.ALAMAT_BACKEND\s*=\s*"[^"]*";',
-                  f'window.ALAMAT_BACKEND = "{url}";', isi)
-    if baru == isi:
+    content = WEB_CONFIG_FILE.read_text(encoding="utf-8")
+    updated = re.sub(r'window\.BACKEND_URL\s*=\s*"[^"]*";',
+                  f'window.BACKEND_URL = "{url}";', content)
+    if updated == content:
         return False
-    BERKAS_CONFIG_WEB.write_text(baru, encoding="utf-8")
+    WEB_CONFIG_FILE.write_text(updated, encoding="utf-8")
     return True
 
 
 def main() -> int:
     print("\n=== DLA to Excel Report -- penyala backend ===\n")
     print("Memeriksa persiapan:")
-    if not cek_persiapan():
+    if not check_setup():
         print("\nAda yang belum siap. Perbaiki dulu, lalu jalankan ulang.")
         return 1
 
     print("\nMenyalakan server...")
-    server = jalankan_server()
+    server = start_server()
     time.sleep(3)
     if server.poll() is not None:
         print("Server gagal menyala. Coba jalankan 'python server.py' untuk "
@@ -113,7 +104,7 @@ def main() -> int:
     print(f"  Server jalan di http://localhost:{PORT}")
 
     exe = shutil.which("cloudflared")
-    terowongan = None
+    tunnel = None
     if not exe:
         print("\n--------------------------------------------------------------")
         print(" cloudflared belum terpasang, jadi backend ini baru bisa")
@@ -127,20 +118,20 @@ def main() -> int:
         print(" lokal (lihat README bagian 'Uji coba di laptop sendiri').")
     else:
         print("\nMembuka terowongan ke internet...")
-        terowongan, url = jalankan_terowongan(exe)
+        tunnel, url = start_tunnel(exe)
         if not url:
             print("  Terowongan gagal memberi URL. Cek koneksi internet.")
         else:
-            ditulis = perbarui_config_web(url)
+            written = update_web_config(url)
             print("\n==============================================================")
             print(" ALAMAT BACKEND PUBLIK:")
             print(f"   {url}")
             print("")
-            if ditulis:
-                print(" web/config.js sudah otomatis diperbarui.")
+            if written:
+                print(" Frontend/config.js sudah otomatis diperbarui.")
                 print(" Supaya website Vercel memakai alamat ini, jalankan:")
                 print("")
-                print('   git add web/config.js && git commit -m "alamat backend baru"')
+                print('   git add Frontend/config.js && git commit -m "alamat backend baru"')
                 print("   git push")
                 print("")
             print(" Atau tanpa deploy ulang, buka halamanmu dengan tambahan:")
@@ -153,7 +144,7 @@ def main() -> int:
     except KeyboardInterrupt:
         print("\nMematikan...")
     finally:
-        for p in (terowongan, server):
+        for p in (tunnel, server):
             if p and p.poll() is None:
                 p.terminate()
                 try:

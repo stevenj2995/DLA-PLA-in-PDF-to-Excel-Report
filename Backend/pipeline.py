@@ -4,257 +4,257 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import config, memori, teks
-from .excel import Baris, Skema, muat as muat_skema, tulis
-from .matcher import Pencocok
-from .memori import GudangProfil, Profil
-from .pdf_reader import DokumenPdf, baca, ocr_tersedia
-from .teks import deteksi, nama_folder
+from . import settings
+from .build.excel import Row, Schema, load_schema, write_rows
+from .extract import text
+from .extract.pdf_reader import PdfDocument, ocr_available, read_pdf
+from .extract.text import detect, folder_name
+from .mapping import memory
+from .mapping.matcher import Matcher
+from .mapping.memory import Profile, ProfileStore
 
-# Flow: PDF di INPUT -> baca -> deteksi perusahaan -> sortir -> generate Excel 
-# Satu Excel per perusahaan, diletakkan di folder perusahaannya masing-masing.
+# Flow: read PDF -> detect company -> group -> one Excel per company,
+# written into that company's own folder.
 
 @dataclass
-class HasilPdf:
+class PdfResult:
     path: Path
-    dokumen: DokumenPdf | None = None
-    perusahaan: str | None = None
-    keyakinan: float = 0.0
-    tingkat: str = "tidak_terdeteksi"
-    baris: Baris | None = None
-    peringatan: list[str] = field(default_factory=list)
-    dilewati: str | None = None
-    tujuan: Path | None = None
+    document: PdfDocument | None = None
+    company: str | None = None
+    confidence: float = 0.0
+    level: str = "undetected"
+    row: Row | None = None
+    warnings: list[str] = field(default_factory=list)
+    skipped: str | None = None
+    destination: Path | None = None
 
 
 @dataclass
-class HasilProses:
-    mulai: datetime = field(default_factory=datetime.now)
-    pdf: list[HasilPdf] = field(default_factory=list)
-    excel: list[dict] = field(default_factory=list)
-    perusahaan_baru: list[str] = field(default_factory=list)
-    catatan_umum: list[str] = field(default_factory=list)
+class ProcessResult:
+    started: datetime = field(default_factory=datetime.now)
+    pdfs: list[PdfResult] = field(default_factory=list)
+    excel_files: list[dict] = field(default_factory=list)
+    new_companies: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
     @property
-    def berhasil(self) -> list[HasilPdf]:
-        return [h for h in self.pdf if h.baris is not None]
+    def succeeded(self) -> list[PdfResult]:
+        return [h for h in self.pdfs if h.row is not None]
 
     @property
-    def perlu_ditinjau(self) -> list[HasilPdf]:
-        return [h for h in self.pdf if h.peringatan and h.dilewati is None]
+    def needs_review(self) -> list[PdfResult]:
+        return [h for h in self.pdfs if h.warnings and h.skipped is None]
 
     @property
-    def gagal(self) -> list[HasilPdf]:
-        return [h for h in self.pdf if h.dilewati]
+    def failed(self) -> list[PdfResult]:
+        return [h for h in self.pdfs if h.skipped]
 
 
-# sesuaikan bentuk nilai dengan kolom tujuannya
-def _rapikan_nilai(kolom: str, mentah):
-    if kolom in ("B", "S"):
-        d = teks.parse_tanggal(mentah)
-        return teks.format_tanggal(d) or teks.rapikan_teks(mentah, 40)
-    if kolom in ("C", "T"):
-        return teks.parse_jam(mentah) or teks.rapikan_teks(mentah, 20)
-    if kolom == "Z":
-        return teks.parse_kode_pos(mentah) or teks.rapikan_teks(mentah, 10)
-    if kolom == "AQ":
-        return teks.parse_uang(mentah)
-    if kolom == "BT":
-        return teks.parse_persen(mentah)
-    return teks.rapikan_teks(mentah)
+def _format_value(column: str, raw):
+    if column in ("B", "S"):
+        d = text.parse_date(raw)
+        return text.format_date(d) or text.clean_text(raw, 40)
+    if column in ("C", "T"):
+        return text.parse_time(raw) or text.clean_text(raw, 20)
+    if column == "Z":
+        return text.parse_postal_code(raw) or text.clean_text(raw, 10)
+    if column == "AQ":
+        return text.parse_money(raw)
+    if column == "BT":
+        return text.parse_percent(raw)
+    return text.clean_text(raw)
 
 
-# ubah isi satu PDF menjadi satu baris Excel
-def _susun_baris(dok: DokumenPdf, profil: Profil, pencocok: Pencocok,
-                 skema: Skema) -> tuple[Baris, list[str]]:
-    b = Baris(sumber=dok.path.name)
-    catatan: list[str] = []
+def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
+               schema: Schema) -> tuple[Row, list[str]]:
+    b = Row(source=doc.path.name)
+    remarks: list[str] = []
 
-    for param, mentah in dok.pasangan_kunci_nilai().items():
-        kolom = profil.kolom_untuk(param)
-        if kolom is None:
-            c = pencocok.cocokkan(param)
-            if c.diterima:
-                profil.ingat_parameter(param, c.kolom, c.cara, c.skor)
-                kolom = c.kolom
-                if c.perlu_ditinjau:
-                    catatan.append(
-                        f"'{param}' dipetakan ke {c.kolom} ({c.header}) lewat "
-                        f"analisis makna dengan skor {c.skor:.2f} - mohon dicek")
+    for param, raw in doc.key_value_pairs().items():
+        column = profile.column_for(param)
+        if column is None:
+            c = matcher.match(param)
+            if c.accepted:
+                profile.remember_parameter(param, c.column, c.method, c.score)
+                column = c.column
+                if c.needs_review:
+                    remarks.append(
+                        f"'{param}' dipetakan ke {c.column} ({c.header}) lewat "
+                        f"analisis makna dengan skor {c.score:.2f} - mohon dicek")
             else:
-                profil.ingat_tidak_cocok(param, c.alasan)
+                profile.remember_unmatched(param, c.reason)
                 continue
-        if kolom in b.nilai:
-            continue # ambil kemunculan pertama
-        nilai = _rapikan_nilai(kolom, mentah)
-        if nilai is not None and nilai != "":
-            b.nilai[kolom] = nilai
+        if column in b.values:
+            continue  # first occurrence wins
+        value = _format_value(column, raw)
+        if value is not None and value != "":
+            b.values[column] = value
 
-    # Reported Name = tertanggung, dan itu sudah dipastikan waktu deteksi lewat
-    # label "Insured Name" / "Name of Insured". Ditimpa di sini karena pencocok
-    # sering menyambar pihak lain - paling sering justru Astra Buana.
-    b.nilai[config.KOLOM_NAMA_TERTANGGUNG] = profil.nama_resmi
+    # Reported Name is the insured, already settled during detection from the
+    # "Insured Name" / "Name of Insured" label. Overwritten here because the
+    # matcher often grabs some other party -- most often Astra Buana itself.
+    b.values[settings.INSURED_NAME_COLUMN] = profile.official_name
 
-    if config.KOLOM_TANGGAL_SURAT:
-        d, kota, _ = teks.tanggal_kaki_surat(dok.teks)
+    if settings.LETTER_DATE_COLUMN:
+        d, city, _ = text.letter_footer_date(doc.text)
         if d:
-            b.nilai.setdefault(
-                config.KOLOM_TANGGAL_SURAT,
-                teks.format_tanggal(d, config.FORMAT_TANGGAL_SURAT))
-            if kota:
-                b.nilai.setdefault("AA", kota)
+            b.values.setdefault(
+                settings.LETTER_DATE_COLUMN,
+                text.format_date(d, settings.LETTER_DATE_FORMAT))
+            if city:
+                b.values.setdefault("AA", city)
 
-    polis = b.nilai.get("D")
-    if polis and polis in config.SHARE_PER_POLIS:
-        share = config.SHARE_PER_POLIS[polis]
-        b.nilai["BT"] = f"{share * 100:g}%"
-        b.nilai["_share_aab"] = f"{share * 100:g}%"
+    policy = b.values.get("D")
+    if policy and policy in settings.SHARE_BY_POLICY:
+        share = settings.SHARE_BY_POLICY[policy]
+        b.values["BT"] = f"{share * 100:g}%"
+        b.values["_aab_share"] = f"{share * 100:g}%"
 
-    for k in skema.target_pencocokan:
-        if k.huruf in config.KOLOM_DITUNDA:
+    for k in schema.match_targets:
+        if k.letter in settings.DEFERRED_COLUMNS:
             continue
-        if k.huruf not in b.nilai:
-            b.nilai[k.huruf] = (
-                f"N/A: tidak ada parameter yang cocok di PDF untuk '{k.nama_bersih}'")
+        if k.letter not in b.values:
+            b.values[k.letter] = (
+                f"N/A: tidak ada parameter yang cocok di PDF untuk '{k.clean_name}'")
 
-    b.peringatan = catatan
-    return b, catatan
+    b.warnings = remarks
+    return b, remarks
 
-def proses(
+def run(
     *,
-    email_operator: str,
-    folder_input: Path | None = None,
-    lapor=None,
-) -> HasilProses:
-    def _kabar(pesan: str):
-        if lapor:
-            lapor(pesan)
+    operator_email: str,
+    input_folder: Path,
+    progress=None,
+) -> ProcessResult:
+    def _report(message: str):
+        if progress:
+            progress(message)
 
-    config.siapkan_folder()
-    hasil = HasilProses()
-    skema = muat_skema()
-    pencocok = Pencocok(skema)
-    gudang = GudangProfil()
+    settings.ensure_folders()
+    result = ProcessResult()
+    schema = load_schema()
+    matcher = Matcher(schema)
+    store = ProfileStore()
 
-    hasil.catatan_umum.append(f"Jalur analisis makna: {pencocok.jalur}")
-    if not ocr_tersedia():
-        hasil.catatan_umum.append(
+    result.notes.append(f"Jalur analisis makna: {matcher.mode}")
+    if not ocr_available():
+        result.notes.append(
             "OCR belum terpasang - PDF hasil scan tidak bisa dibaca isinya.")
 
-    daftar = memori.daftar_pdf(folder_input)
-    if not daftar:
-        hasil.catatan_umum.append(f"Tidak ada PDF di {folder_input or config.INPUT_DIR}")
-        return hasil
+    pdf_files = memory.list_pdfs(input_folder)
+    if not pdf_files:
+        result.notes.append(f"Tidak ada PDF di {input_folder}")
+        return result
 
-    kelompok: dict[str, list[HasilPdf]] = {}
-    for p in daftar:
-        _kabar(f"Membaca {p.name}")
-        h = HasilPdf(path=p)
-        h.dokumen = baca(p)
-        h.peringatan.extend(h.dokumen.peringatan)
+    groups: dict[str, list[PdfResult]] = {}
+    for p in pdf_files:
+        _report(f"Membaca {p.name}")
+        h = PdfResult(path=p)
+        h.document = read_pdf(p)
+        h.warnings.extend(h.document.warnings)
 
-        if h.dokumen.gagal:
-            h.dilewati = h.dokumen.gagal
-            hasil.pdf.append(h)
+        if h.document.error:
+            h.skipped = h.document.error
+            result.pdfs.append(h)
             continue
 
-        d = deteksi(h.dokumen.baris, nama_file=p.name)
-        h.perusahaan, h.keyakinan, h.tingkat = d.nama, d.keyakinan, d.tingkat
-        h.peringatan.extend(d.peringatan)
-        hasil.pdf.append(h)
+        d = detect(h.document.lines, file_name=p.name)
+        h.company, h.confidence, h.level = d.name, d.confidence, d.level
+        h.warnings.extend(d.warnings)
+        result.pdfs.append(h)
 
-        if d.tingkat == "tidak_terdeteksi":
+        if d.level == "undetected":
             continue
-        profil, baru = gudang.ambil_atau_buat(d.nama)
-        if baru:
-            hasil.perusahaan_baru.append(profil.nama_resmi)
-        kelompok.setdefault(profil.kunci, []).append(h)
+        profile, is_new = store.get_or_create(d.name)
+        if is_new:
+            result.new_companies.append(profile.official_name)
+        groups.setdefault(profile.key, []).append(h)
 
-    stempel = hasil.mulai.strftime("%Y%m%d")
-    for anggota in kelompok.values():
-        profil = gudang.cari(anggota[0].perusahaan)
-        _kabar(f"Menyusun {profil.nama_resmi} ({len(anggota)} PDF)")
-        folder = memori.folder_perusahaan(profil.grup, profil.folder)
-        folder_pdf = folder / config.SUBFOLDER_PDF
+    stamp = result.started.strftime("%Y%m%d")
+    for members in groups.values():
+        profile = store.find(members[0].company)
+        _report(f"Menyusun {profile.official_name} ({len(members)} PDF)")
+        folder = memory.company_folder(profile.group, profile.folder)
+        pdf_folder = folder / settings.PDF_SUBFOLDER
 
-        baris: list[Baris] = []
-        for h in anggota:
-            b, catatan = _susun_baris(h.dokumen, profil, pencocok, skema)
-            ref = b.nilai.get(config.KOLOM_REF_UNIK)
-            baru = ref and not str(ref).startswith("N/A")
-            if baru and ref in profil.ref_sudah_diproses:
-                h.dilewati = f"sudah pernah diproses (ref {ref})"
-                h.tujuan = memori.pindahkan(h.path, folder_pdf, alasan="duplikat")
+        rows: list[Row] = []
+        for h in members:
+            b, remarks = _build_row(h.document, profile, matcher, schema)
+            ref = b.values.get(settings.UNIQUE_REF_COLUMN)
+            is_new = ref and not str(ref).startswith("N/A")
+            if is_new and ref in profile.processed_refs:
+                h.skipped = f"sudah pernah diproses (ref {ref})"
+                h.destination = memory.move_pdf(h.path, pdf_folder, reason="duplikat")
                 continue
-            if baru:
-                profil.ref_sudah_diproses.append(str(ref))
-            h.baris = b
-            h.peringatan.extend(catatan)
-            baris.append(b)
+            if is_new:
+                profile.processed_refs.append(str(ref))
+            h.row = b
+            h.warnings.extend(remarks)
+            rows.append(b)
 
-        if baris:
-            nama_excel = f"{nama_folder(profil.nama_resmi)}_{stempel}.xlsx"
-            ringkas = tulis(baris, folder / nama_excel,
-                            email_operator=email_operator, skema=skema)
-            ringkas["perusahaan"] = profil.nama_resmi
-            if not ringkas["dropdown_utuh"]:
-                hasil.catatan_umum.append(
-                    f"{profil.nama_resmi}: dropdown tidak utuh "
-                    f"({ringkas['dropdown_hasil']}/{ringkas['dropdown_asli']})")
-            hasil.excel.append(ringkas)
+        if rows:
+            excel_name = f"{folder_name(profile.official_name)}_{stamp}.xlsx"
+            summary = write_rows(rows, folder / excel_name,
+                                 operator_email=operator_email, schema=schema)
+            summary["company"] = profile.official_name
+            if not summary["dropdowns_intact"]:
+                result.notes.append(
+                    f"{profile.official_name}: dropdown tidak utuh "
+                    f"({summary['dropdowns_after']}/{summary['dropdowns_before']})")
+            result.excel_files.append(summary)
 
-        for h in anggota:
-            if h.tujuan is None:
-                h.tujuan = memori.pindahkan(
-                    h.path, folder_pdf,
-                    alasan=f"{profil.nama_resmi} (keyakinan {h.keyakinan:.2f})")
-        profil.jumlah_pdf += len(baris)
-        gudang.simpan(profil)
+        for h in members:
+            if h.destination is None:
+                h.destination = memory.move_pdf(
+                    h.path, pdf_folder,
+                    reason=f"{profile.official_name} (keyakinan {h.confidence:.2f})")
+        profile.pdf_count += len(rows)
+        store.save(profile)
 
-    for h in hasil.pdf:
-        if h.tujuan is None and h.path.exists():
-            h.tujuan = memori.pindahkan(
-                h.path, memori.folder_tidak_terdeteksi(),
-                alasan=h.dilewati or "perusahaan tidak terdeteksi")
+    for h in result.pdfs:
+        if h.destination is None and h.path.exists():
+            h.destination = memory.move_pdf(
+                h.path, memory.undetected_folder(),
+                reason=h.skipped or "perusahaan tidak terdeteksi")
 
-    tulis_laporan(hasil)
-    return hasil
+    write_report(result)
+    return result
 
 
-def tulis_laporan(hasil: HasilProses) -> Path:
-    f = config.OUTPUT_DIR / f"_LAPORAN_{hasil.mulai:%Y%m%d_%H%M%S}.txt"
+def write_report(result: ProcessResult) -> Path:
+    f = settings.OUTPUT_DIR / f"_LAPORAN_{result.started:%Y%m%d_%H%M%S}.txt"
     f.parent.mkdir(parents=True, exist_ok=True)
 
     b: list[str] = []
     b.append("LAPORAN PROSES OTOMASI PDF -> EXCEL")
-    b.append(f"Waktu   : {hasil.mulai:%Y-%m-%d %H:%M:%S}")
-    b.append(f"Total   : {len(hasil.pdf)} PDF | berhasil {len(hasil.berhasil)} | "
-             f"dilewati {len(hasil.gagal)} | perlu ditinjau {len(hasil.perlu_ditinjau)}")
+    b.append(f"Waktu   : {result.started:%Y-%m-%d %H:%M:%S}")
+    b.append(f"Total   : {len(result.pdfs)} PDF | berhasil {len(result.succeeded)} | "
+             f"dilewati {len(result.failed)} | perlu ditinjau {len(result.needs_review)}")
     b.append("")
-    for c in hasil.catatan_umum:
+    for c in result.notes:
         b.append(f"CATATAN: {c}")
-    if hasil.perusahaan_baru:
+    if result.new_companies:
         b.append("")
         b.append("PERUSAHAAN BARU (profil memory dibuat):")
-        b += [f"  - {n}" for n in hasil.perusahaan_baru]
-    if hasil.excel:
+        b += [f"  - {n}" for n in result.new_companies]
+    if result.excel_files:
         b.append("")
         b.append("FILE EXCEL YANG DIHASILKAN:")
-        for e in hasil.excel:
-            utuh = "dropdown utuh" if e["dropdown_utuh"] else "DROPDOWN RUSAK"
-            b.append(f"  - {e['perusahaan']}: {e['baris']} baris, {utuh}")
+        for e in result.excel_files:
+            utuh = "dropdown utuh" if e["dropdowns_intact"] else "DROPDOWN RUSAK"
+            b.append(f"  - {e['company']}: {e['rows']} baris, {utuh}")
             b.append(f"    {e['file']}")
-    if hasil.perlu_ditinjau:
+    if result.needs_review:
         b.append("")
         b.append("PERLU DITINJAU:")
-        for h in hasil.perlu_ditinjau:
-            b.append(f"  - {h.path.name} (perusahaan: {h.perusahaan or '-'}, "
-                     f"keyakinan {h.keyakinan:.2f})")
-            b += [f"      ! {w}" for w in h.peringatan]
-    if hasil.gagal:
+        for h in result.needs_review:
+            b.append(f"  - {h.path.name} (perusahaan: {h.company or '-'}, "
+                     f"keyakinan {h.confidence:.2f})")
+            b += [f"      ! {w}" for w in h.warnings]
+    if result.failed:
         b.append("")
         b.append("DILEWATI:")
-        b += [f"  - {h.path.name}: {h.dilewati}" for h in hasil.gagal]
+        b += [f"  - {h.path.name}: {h.skipped}" for h in result.failed]
 
     f.write_text("\n".join(b), encoding="utf-8")
     return f

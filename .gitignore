@@ -1,10 +1,9 @@
 # ---- Dokumen rahasia: JANGAN pernah masuk git ----
 # File-file ini tetap ada di laptop, hanya tidak diikutkan ke GitHub.
-Input/
 Output/
 Memory/
 Training and Testing Data/
-Standar/*.xlsx
+Template/*.xlsx
 *.pdf
 
 # ---- Berkas kerja Python ----

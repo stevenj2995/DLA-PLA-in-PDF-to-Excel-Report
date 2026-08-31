@@ -1,28 +1,27 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-STANDAR_DIR = ROOT / "STANDAR"
-INPUT_DIR = ROOT / "INPUT"
-OUTPUT_DIR = ROOT / "OUTPUT"
-MEMORY_DIR = ROOT / "MEMORY"
+TEMPLATE_DIR = ROOT / "Template"
+OUTPUT_DIR = ROOT / "Output"
+MEMORY_DIR = ROOT / "Memory"
 
-FOLDER_TIDAK_TERDETEKSI = "_TIDAK_TERDETEKSI"
-SUBFOLDER_PDF = "PDF"
+UNDETECTED_FOLDER = "_TIDAK_TERDETEKSI"
+PDF_SUBFOLDER = "PDF"
 
-# struktur sheet standar
-SHEET_UTAMA = "MosyClaimTask"
-BARIS_GRUP = 2
-BARIS_HEADER = 3
-BARIS_FLAG = 4
-BARIS_DATA_AWAL = 5
+# layout of the standard sheet
+MAIN_SHEET = "MosyClaimTask"
+GROUP_ROW = 2
+HEADER_ROW = 3
+FLAG_ROW = 4
+FIRST_DATA_ROW = 5
 
-# peran kolom
-KOLOM_DARI_PDF = [
+# what each column is for
+COLUMNS_FROM_PDF = [
     "B", "C", "D", "E", "H", "I", "S", "T", "V", "Y",
     "Z", "AA", "AB", "AC", "AI", "AK", "AL", "AQ", "BT",
 ]
 
-KOLOM_KONSTAN = {
+CONSTANT_COLUMNS = {
     "F": "CPM - Heavy Equipment - CPM",
     "N": None,
     "O": "Y",
@@ -37,11 +36,11 @@ KOLOM_KONSTAN = {
     "BA": "Y",
 }
 
-KOLOM_EMAIL_OPERATOR = "N"
-KOLOM_NOMOR_URUT = "A"
-KOLOM_REF_UNIK = "Y"
-KOLOM_NAMA_TERTANGGUNG = "H"   # Reported Name, diisi dari hasil deteksi
-KOLOM_RUMUS = {
+OPERATOR_EMAIL_COLUMN = "N"
+ROW_NUMBER_COLUMN = "A"
+UNIQUE_REF_COLUMN = "Y"
+INSURED_NAME_COLUMN = "H"   # Reported Name, filled from detection
+FORMULA_COLUMNS = {
     "AM": ('="Klaim yang terjadi dengan detail sebagai berikut."&"\n\n"'
            '&"Lokasi:"&" "&AA{r}&"\nDOL:"&" "&B{r}&"\n"'
            '&"Nature of Damage:"&" "&AC{r}&"\n"'
@@ -53,68 +52,58 @@ KOLOM_RUMUS = {
     "AR": "=AQ{r}*{share}",
 }
 
-KOLOM_KOSONG = [
+EMPTY_COLUMNS = [
     "G", "J", "K", "L", "M", "P", "Q", "R", "X", "AE", "AG", "AH", "AJ",
     "AS", "AU", "AV", "AW", "AX", "AY", "AZ", "BH", "BI", "BK", "BL", "BM",
 ]
-KOLOM_MONITORING = ["BN", "BO", "BP", "BQ", "BR", "BS"]
-KOLOM_DITUNDA = ["BT"]
-KOLOM_FEE = ["BB", "BC", "BD", "BE", "BF", "BG", "BJ"]
+MONITORING_COLUMNS = ["BN", "BO", "BP", "BQ", "BR", "BS"]
+DEFERRED_COLUMNS = ["BT"]
+FEE_COLUMNS = ["BB", "BC", "BD", "BE", "BF", "BG", "BJ"]
 
-# threshold
-YAKIN = 0.85
-RAGU = 0.60
+# detection confidence thresholds
+CONFIDENT = 0.85
+UNSURE = 0.60
 
-PERUSAHAAN_TUJUAN = [
+OWN_COMPANY_NAMES = [
     "asuransi astra buana",
     "astra buana",
     "asuransi astra",
 ]
 
-# Nama perusahaan SELALU diambil dari tertanggung - pemilik polis yang
-# mengalami kerugian. Bukan penerbit laporan, bukan pihak tujuan.
-#
-# JALUR UTAMA: label di bawah ini dicocokkan UTUH dengan tulisan di kiri titik
-# dua, lalu nilai di kanannya dipakai apa adanya. Harus utuh, karena
-# "Insured Interest", "Insured Period", "Total Sum Insured", dan "Reinsured"
-# sama-sama memuat kata "insured" tapi bukan nama tertanggung.
-# Semua bentuk di bawah dipanen dari 10 DLA asli.
-LABEL_NAMA_TERTANGGUNG = {
+INSURED_NAME_LABELS = {
     "insured", "the insured", "insured name", "insured's name",
     "name of insured", "name of the insured", "insured party",
     "tertanggung", "nama tertanggung", "pemegang polis", "nama pemegang polis",
     "policyholder", "policy holder",
 }
 
-# JALUR CADANGAN: dipakai hanya kalau tidak ada satu pun label di atas.
-# Ini cuma kata penanda di dekat nama, dicocokkan per kata utuh.
-LABEL_TERTANGGUNG = ["tertanggung", "insured", "pemegang polis", "nama tertanggung"]
-LABEL_TUJUAN = ["kepada", "kepada yth", "ditujukan kepada", "to"]
+INSURED_HINT_LABELS = ["tertanggung", "insured", "pemegang polis", "nama tertanggung"]
+RECIPIENT_HINT_LABELS = ["kepada", "kepada yth", "ditujukan kepada", "to"]
 
-BENTUK_BADAN_USAHA = [
+LEGAL_ENTITY_FORMS = [
     "pt", "cv", "ud", "pd", "persero", "tbk", "perseroan terbatas", "ltd", "inc",
 ]
 
-KOLOM_TANGGAL_SURAT = "S"
-FORMAT_TANGGAL_SURAT = "iso"
+LETTER_DATE_COLUMN = "S"
+LETTER_DATE_FORMAT = "iso"
 
-SHARE_PER_POLIS = {}
+SHARE_BY_POLICY = {}
 
 # OCR
 TESSERACT_PATH = None
-OCR_BAHASA = "ind+eng"
-AMBANG_HALAMAN_SCAN = 120
+OCR_LANGUAGES = "ind+eng"
+SCANNED_PAGE_THRESHOLD = 120
 
 
-def file_standar() -> Path:
-    kandidat = sorted(STANDAR_DIR.glob("*.xlsx"),
+def template_file() -> Path:
+    candidates = sorted(TEMPLATE_DIR.glob("*.xlsx"),
                       key=lambda p: p.stat().st_mtime, reverse=True)
-    kandidat = [p for p in kandidat if not p.name.startswith("~$")]
-    if not kandidat:
-        raise FileNotFoundError(f"Tidak ada file .xlsx di {STANDAR_DIR}")
-    return kandidat[0]
+    candidates = [p for p in candidates if not p.name.startswith("~$")]
+    if not candidates:
+        raise FileNotFoundError(f"Tidak ada file .xlsx di {TEMPLATE_DIR}")
+    return candidates[0]
 
 
-def siapkan_folder() -> None:
-    for d in (INPUT_DIR, OUTPUT_DIR, MEMORY_DIR):
+def ensure_folders() -> None:
+    for d in (OUTPUT_DIR, MEMORY_DIR):
         d.mkdir(parents=True, exist_ok=True)

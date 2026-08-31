@@ -1,232 +1,132 @@
-# Hal yang belum diputuskan
-
-Kode ini dibangun sebelum semua pertanyaan terjawab. Tiap poin di bawah
-menunjuk **baris config yang harus diubah** begitu jawabannya ada — semuanya
-satu baris, tidak perlu bongkar kode.
-
----
-
-## 1. Tanggal kaki surat masuk kolom mana — PENGHAMBAT
-
-PDF punya kaki surat seperti `Jakarta, 22 Agustus 2026`. Belum jelas tanggal
-itu isi kolom mana.
-
-Masalahnya: kolom **C** `Time of Loss` dan **T** `Notification Time` berlabel
-`(HH:MM)` — minta jam, bukan tanggal. Menaruh tanggal di situ kemungkinan
-ditolak sistem. Dugaan yang lebih masuk akal adalah kolom **S**
-`Notification Date (YYYY-MM-DD)`, karena tanggal surat = tanggal pelaporan.
-
-**Asumsi yang dipakai sekarang:** kolom S, format `2026-08-22`.
-
-```python
-# src/config.py
-KOLOM_TANGGAL_SURAT = "S"        # "S" | "C" | "T" | None
-FORMAT_TANGGAL_SURAT = "iso"     # "iso" -> 2026-08-22 | "asli" -> 22 Agustus 2026
-```
-
----
-
-## 2. Pencocokan nilai ke daftar tertutup
-
-11 kolom terikat dropdown dengan daftar nilai yang sah (`CauseOfLoss` 149 item,
-`InsuranceCoverage` 374 item, dst).
-
-**Fakta yang perlu diketahui:** dropdown hanya menghalangi orang yang mengetik
-manual. Nilai yang **ditulis program tetap diterima Excel diam-diam**, walau
-tidak ada dalam daftar. Jadi kalau PDF menulis `Tabrakan` dan daftar sahnya
-`Collision/Contact`, filenya tetap jadi — dan baru ketahuan salah saat upload.
-
-**Kondisi sekarang:** nilai ditulis apa adanya dari PDF, belum dicocokkan ke
-daftar. Lapisan ini belum dibuat karena menunggu penjelasan.
-
-Kalau nanti diperlukan, sheet lookup-nya sudah tersedia di file standar dan
-tinggal dibaca — tidak perlu bikin daftar baru.
-
----
-
-## 3. Share AAB (kolom BT)
-
-Nilainya mengikuti nomor polis, bukan dari isi PDF:
-
-| Policy No. | Share |
-|---|---|
-| 092500072623, 092300058448, 09240006885x | 3,50% |
-| 092500072727, 092400067129, 092600080783 | 6,00% |
-| 042412488601 | 25,00% |
-
-**Kondisi sekarang:** BT dikosongkan, dan tidak diisi `N/A` (sengaja, karena
-ini penundaan — bukan ketiadaan data).
-
-**Akibatnya:** kolom AM mencetak `AAB Share = 0`, dan kolom AR tidak ditulis
-sama sekali karena persentasenya tidak diketahui.
-
-Begitu tabelnya ada, isi di sini dan AR ikut hidup sendiri:
-
-```python
-# src/config.py
-SHARE_PER_POLIS = {"092500072623": 0.035, "092500072727": 0.06}
-```
-
----
-
-## 4. Kolom Monitoring (BN–BS)
-
-Enam kolom: Status, Claim No., SCS No., SCS Type, Current Stage, Error Message.
-Terlihat diisi setelah upload, bukan dari PDF. Di file standar isinya juga
-campur aduk — BN `Status` berisi nomor seri mesin, BO ada yang berisi teks
-`regist manual`.
-
-**Kondisi sekarang:** dikosongkan. Diatur di `KOLOM_MONITORING`.
-
----
-
-## 5. 25 kolom yang selalu kosong
-
-Kosong di seluruh 107 baris contoh. Beberapa ditandai `Mandatory` tapi tetap
-kosong — P `Contact Person Name` dan R `Contact Person Email Address` kosong
-karena O `Same as Reported` = `Y`. Jadi penanda Mandatory bersifat bersyarat.
-
-**Kondisi sekarang:** tetap ditulis sebagai kolom kosong, sesuai keputusan
-"ikuti saja semua yang ada di sheet MosyClaimTask".
-
----
-
-## 6. Kode pos
-
-Batch pertama di file standar seluruhnya `99999` (isian asal), batch lain pakai
-kode asli.
-
-**Kondisi sekarang:** pakai kode pos asli yang terbaca dari PDF.
-
----
-
-## 7. 12 kolom konstan
-
-`CPM - Heavy Equipment - CPM`, `MGQ`, `CASC - Casco`, `Reinstate`, `IDR` —
-semuanya khas alat berat. Kalau masuk PDF dari lini bisnis lain, nilai ini
-salah semua.
-
-Ubah di `KOLOM_KONSTAN` (src/config.py). Isi `None` untuk mengosongkan.
-
----
-
-## 8. Identitas perusahaan — SELESAI
-
-Dalam satu PDF biasanya ada tiga nama perusahaan:
-
-- **Penerbit** — adjuster/broker pembuat laporan, ada di kop surat atau blok tanda tangan
-- **Tertanggung** — pemilik polis yang mengalami kerugian (contoh: Pelindo)
-- **Tujuan** — PT Asuransi Astra Buana, selalu dicoret
-
-**Diputuskan 26 Agustus 2026: selalu tertanggung.** Yang pada akhirnya harus
-diambil adalah data pemilik polis, bukan pembuat laporannya. Pilihan
-`IDENTITAS_PERUSAHAAN` dan radio button di panel kiri sudah dihapus — tidak
-ada lagi yang perlu dipilih.
-
-Ini menentukan dua hal: profil memory disimpan atas nama siapa, dan folder
-output dipecah berdasarkan apa.
-
-### Cara kerjanya sekarang: baca labelnya, jangan menebak
-
-Kesebelas DLA yang ada semuanya menulis tertanggungnya secara eksplisit. Jadi
-nama tidak lagi ditebak lewat skor — kalau dokumen menulis
-`Name of Insured : X`, maka **X adalah tertanggungnya**, titik.
-
-Label dicocokkan **utuh** dengan tulisan di kiri titik dua, lewat daftar
-`LABEL_NAMA_TERTANGGUNG` di `src/config.py`:
-
-| Diterima | Ditolak |
-|---|---|
-| `Insured`, `Insured Name`, `THE INSURED` | `REINSURED`, `Name of Reinsured` |
-| `Name of Insured`, `NAME OF INSURED` | `TOTAL SUM INSURED`, `INTEREST INSURED` |
-| `Tertanggung`, `Nama Tertanggung` | `Insured Interest`, `Insured Period` |
-
-Harus utuh, bukan potongan kata: enam bentuk di kolom kanan sama-sama memuat
-`insured` tapi bukan nama tertanggung. `Insured Interest` dan `Insured Period`
-bahkan diawali `Insured`.
-
-Tiga hal yang ikut ditambal:
-
-1. **Deteksi sekarang membaca baris hasil susun-posisi**, bukan teks urutan
-   mentah. Sebelumnya label dan nilainya terpisah jauh di urutan baca — di
-   DLA PWS, `Insured :` sama sekali tidak ada di dekat nama tertanggungnya.
-2. **Nama tanpa awalan PT ikut terbaca.** DLA IBURE menulis
-   `NAME OF INSURED : BUKIT MAKMUR MANDIRI UTAMA` — tanpa PT, jadi dulu tidak
-   pernah dianggap kandidat dan PDF-nya jatuh ke `_TIDAK_TERDETEKSI`.
-3. **Rantai `and/or` dan `QQ` diambil yang pertama.** DLA PWS menyebut 15
-   perusahaan sekaligus; yang dipakai `PT. Bara Tabang` sebagai tertanggung
-   utama. Ubah `RE_PIHAK_LAIN` di `src/teks.py` kalau seharusnya lain.
-
-Bonus skor "muncul di kop surat" dihapus, dan jalur skor lama tetap ada
-sebagai **cadangan** — dipakai hanya kalau tidak ada satu pun label
-tertanggung, dan hasilnya selalu diberi peringatan.
-
-**Kolom H (Reported Name) diisi dari hasil deteksi ini**, tidak lagi dari
-pencocok parameter. Sebelumnya 7 dari 10 berkas berisi `Asuransi Astra Buana`
-— pihak tujuan yang justru selalu dicoret di tempat lain.
-
-**Diuji atas 11 DLA asli: 11/11 tepat**, semuanya lewat label eksplisit,
-`_TIDAK_TERDETEKSI` kosong.
-
----
-
-## 9. Astra Buana selalu jadi penerima?
-
-Nama `PT Asuransi Astra Buana` selalu dibuang saat menentukan perusahaan,
-karena dia pihak tujuan. Kalau ternyata ada PDF yang **diterbitkan oleh**
-Astra Buana sendiri, PDF itu akan jatuh ke `_TIDAK_TERDETEKSI`.
-
-Diatur di `PERUSAHAAN_TUJUAN`.
-
----
-
-## 10. Satu PDF = satu baris
-
-Dipakai sebagai asumsi, karena `Claim External Ref No.` unik di 106 dari 106
-baris contoh. Kalau ternyata satu PDF bisa berisi tabel banyak klaim,
-`_susun_baris()` di `src/pipeline.py` perlu mengembalikan beberapa baris.
-
----
-
-## 11. OCR — SELESAI
-
-Tesseract v5.4.0 terpasang di `C:\Program Files\Tesseract-OCR`, dengan paket
-bahasa `eng` + `ind`. PDF hasil scan sudah bisa dibaca.
-
----
-
-## 12. Jalur utama pencocokan makna — SELESAI
-
-`sentence-transformers` terpasang, model `paraphrase-multilingual-MiniLM-L12-v2`
-sudah terunduh dan tersimpan di cache (jalan offline seterusnya).
-
-Catatan pemasangan: ada instalasi TensorFlow rusak di laptop ini yang membuat
-`transformers` gagal saat impor. Ditambal di `src/matcher.py` dengan
-`USE_TF=0` supaya hanya memakai torch.
-
-Istilah tak terdaftar sekarang tertangkap: "Taksiran Nilai Ganti" -> MD Gross
-Amount (0.80), "Nomor Kontrak Pertanggungan" -> Policy No. (0.80). Yang skornya
-di bawah 0.85 tetap ditandai "perlu ditinjau".
-
----
-
-## 13. Ketepatan angka uang — belum ada penjaganya
-
-Kolom **AQ** `MD Gross Amount` berisi angka seperti `1.024.770.200`. Kalau OCR
-salah baca satu digit, yang masuk ke sistem klaim adalah angka salah — **tanpa
-tanda peringatan apa pun**, karena angka salah tetap terlihat wajar.
-
-Untuk PDF digital risikonya kecil. Untuk PDF hasil scan, nyata.
-
-Belum ada mekanisme penjaga. Saran: satu langkah manusia melihat kolom nilai
-uang sebelum Excel diupload, minimal untuk baris yang ditandai perlu ditinjau.
-
----
-
-## 14. File hasil belum diuji di Microsoft Excel
-
-Sudah diverifikasi lewat Python: 13 sheet utuh, 11/11 dropdown selamat, format
-teks tanggal dan rumus AM tetap. Tapi belum pernah dibuka di Excel sungguhan.
-
-**Tolong buka file pertama dan klik sel `Cause of Loss` — pastikan dropdown-nya
-benar-benar muncul.**
+# Yang masih perlu dikerjakan
+
+Catatan ini isinya satu hal saja: apa yang masih perlu Anda lakukan supaya
+sistem ini berjalan dengan baik. Ditulis biasa, tidak perlu dibaca berurutan.
+
+Semua yang disebut di bawah cukup diubah satu baris di `Backend/settings.py`,
+kecuali kalau disebutkan lain.
+
+
+## Yang perlu Anda lakukan sendiri
+
+**Buka satu file hasil di Microsoft Excel, lalu klik sel Cause of Loss.**
+Pastikan dropdown-nya benar-benar muncul. Ini satu-satunya hal yang belum
+pernah diuji sama sekali. Semua pengecekan sejauh ini dilakukan lewat Python:
+13 sheet utuh, 11 dari 11 dropdown selamat, format tanggal dan rumus AM tetap.
+Tapi Python bukan Excel, dan yang menentukan adalah Excel.
+
+**Periksa kolom nilai uang sebelum Excel diupload.** Kolom AQ (MD Gross Amount)
+berisi angka seperti 1.024.770.200. Kalau OCR salah membaca satu digit, yang
+masuk ke sistem klaim adalah angka salah, tanpa peringatan apa pun, karena
+angka salah tetap terlihat wajar. Untuk PDF digital risikonya kecil; untuk PDF
+hasil pindaian, nyata. Belum ada mekanisme penjaga untuk ini, jadi minimal
+lihat sendiri baris-baris yang ditandai "perlu ditinjau".
+
+**Pasang kode akses kalau backend dibuka ke internet.** Tanpa itu, siapa pun
+yang punya tautannya bisa mengunggah. Caranya `set ACCESS_CODE=kode-anda`
+sebelum menjalankan `run.py`. Ini penting bukan cuma soal PDF yang masuk, tapi
+karena setiap Excel hasil membawa 12 sheet referensi internal Astra
+(CatastropheEvent, InsuranceCoverage, dan lainnya) yang tidak bisa dibuang
+tanpa merusak dropdown. Memberi hasil ke orang luar berarti ikut memberikan
+struktur referensi itu.
+
+**Isi folder Memory kalau ingin deteksi makin pintar.** Sekarang folder itu
+kosong, dan karena satu-satunya jalur masuk adalah web (yang selalu bekerja di
+folder sementara), apa pun yang dipelajari sistem ikut terhapus setiap selesai.
+Artinya tiap permintaan menebak dari nol dan tidak akan membaik sendiri. Kalau
+ini mengganggu, profil per perusahaan bisa ditulis manual sebagai file JSON di
+folder Memory.
+
+
+## Yang menunggu jawaban dari kantor
+
+**Tanggal kaki surat masuk kolom mana.** Ini yang paling menghambat. PDF punya
+kaki surat seperti "Jakarta, 22 Agustus 2026", dan belum jelas tanggal itu
+mengisi kolom apa. Kolom C (Time of Loss) dan T (Notification Time) berlabel
+HH:MM, artinya minta jam bukan tanggal, jadi menaruh tanggal di situ
+kemungkinan besar ditolak sistem. Dugaan yang lebih masuk akal adalah kolom S
+(Notification Date), karena tanggal surat sama dengan tanggal pelaporan. Itulah
+asumsi yang dipakai sekarang: `LETTER_DATE_COLUMN = "S"` dengan format ISO.
+Begitu ada jawabannya, ganti satu baris itu.
+
+**Tabel share AAB.** Nilai kolom BT mengikuti nomor polis, bukan isi PDF.
+Sekarang BT sengaja dikosongkan, dan sengaja tidak diisi "N/A" karena ini
+penundaan, bukan ketiadaan data. Akibatnya kolom AM mencetak "AAB Share = 0"
+dan kolom AR tidak ditulis sama sekali. Begitu tabelnya ada, isi
+`SHARE_BY_POLICY` seperti `{"092500072623": 0.035}` dan kolom AR hidup sendiri.
+Dari catatan sebelumnya, polis 0925000726xx sekitar 3,5%, 0925000727xx sekitar
+6%, dan 042412488601 sekitar 25% — tapi angka itu perlu dikonfirmasi.
+
+**Apakah nilai perlu dicocokkan ke daftar dropdown.** Sebelas kolom terikat
+daftar nilai yang sah, misalnya CauseOfLoss punya 149 pilihan. Yang perlu
+diketahui: dropdown hanya menghalangi orang yang mengetik manual. Nilai yang
+ditulis program tetap diterima Excel diam-diam walau tidak ada dalam daftar.
+Jadi kalau PDF menulis "Tabrakan" sedangkan daftar sahnya "Collision/Contact",
+filenya tetap jadi dan baru ketahuan salah saat diupload. Sekarang nilai
+ditulis apa adanya. Kalau nanti perlu dicocokkan, sheet lookup-nya sudah ada di
+file template dan tinggal dibaca.
+
+**Apakah satu PDF selalu jadi satu baris.** Ini dipakai sebagai asumsi karena
+Claim External Ref No. unik di 106 dari 106 baris contoh. Kalau ternyata satu
+PDF bisa berisi tabel banyak klaim, fungsi `_build_row` di `Backend/pipeline.py`
+perlu diubah supaya mengembalikan beberapa baris.
+
+
+## Yang sudah diputuskan, tinggal diketahui
+
+**Nama perusahaan selalu diambil dari tertanggung.** Dalam satu PDF biasanya
+ada tiga nama: penerbit laporan (adjuster atau broker), tertanggung (pemilik
+polis yang mengalami kerugian), dan pihak tujuan (PT Asuransi Astra Buana).
+Yang diambil selalu tertanggung. Ini menentukan dua hal sekaligus: profil
+memory disimpan atas nama siapa, dan folder hasil dipecah berdasarkan apa.
+
+Namanya tidak ditebak lewat skor, melainkan dibaca dari labelnya. Kalau dokumen
+menulis "Name of Insured : X", maka X adalah tertanggungnya, titik. Labelnya
+harus cocok utuh dengan tulisan di kiri titik dua, lewat daftar
+`INSURED_NAME_LABELS`. Harus utuh dan bukan potongan kata, karena "Reinsured",
+"Total Sum Insured", "Insured Interest", dan "Insured Period" semuanya memuat
+kata insured tapi bukan nama tertanggung. Kalau dicocokkan sebagai potongan,
+perusahaan yang menyerahkan risiko akan tertukar dengan pemilik polis. Ini
+alasan aturan tersebut ada; jangan disederhanakan jadi pencarian substring.
+
+Jalur skor yang lama masih ada sebagai cadangan, dipakai hanya kalau tidak ada
+satu pun label tertanggung, dan hasilnya selalu diberi peringatan. Diuji atas
+11 DLA asli dan tepat 11 dari 11, semuanya lewat label eksplisit.
+
+Kalau suatu saat ada PDF yang justru diterbitkan oleh Astra Buana sendiri, PDF
+itu akan jatuh ke folder `_TIDAK_TERDETEKSI`, karena nama Astra Buana selalu
+dibuang saat menentukan perusahaan. Diatur di `OWN_COMPANY_NAMES`.
+
+Rantai "and/or" dan "QQ" diambil yang pertama saja. Satu DLA menyebut 15
+perusahaan sekaligus dan yang dipakai adalah yang disebut duluan sebagai
+tertanggung utama. Diatur oleh `RE_OTHER_PARTIES` di `Backend/extract/text.py`.
+
+**Dua belas kolom diisi nilai tetap.** CPM - Heavy Equipment - CPM, MGQ,
+CASC - Casco, Reinstate, IDR, dan seterusnya. Semuanya khas alat berat, jadi
+kalau nanti masuk PDF dari lini bisnis lain, nilai-nilai ini salah semua.
+Diubah di `CONSTANT_COLUMNS`, isi `None` untuk mengosongkan.
+
+**Enam kolom monitoring dikosongkan.** BN sampai BS (Status, Claim No., SCS No.,
+SCS Type, Current Stage, Error Message) terlihat diisi setelah upload, bukan
+dari PDF. Di file template isinya juga campur aduk. Diatur di
+`MONITORING_COLUMNS`.
+
+**Dua puluh lima kolom lain memang selalu kosong.** Kosong di seluruh 107 baris
+contoh. Beberapa ditandai Mandatory tapi tetap kosong, misalnya Contact Person
+Name dan Contact Person Email Address, karena kolom O (Same as Reported) diisi
+Y. Jadi penanda Mandatory di template itu bersifat bersyarat.
+
+**Kode pos memakai angka asli dari PDF.** Batch pertama di file template
+seluruhnya berisi 99999 sebagai isian asal, batch lain memakai kode asli. Yang
+dipakai sistem adalah yang asli.
+
+**OCR sudah siap.** Tesseract 5.4.0 terpasang dengan paket bahasa Inggris dan
+Indonesia, jadi PDF hasil pindaian bisa dibaca.
+
+**Pencocokan makna sudah pakai jalur utama.** Model
+paraphrase-multilingual-MiniLM-L12-v2 sudah terunduh dan tersimpan, jadi jalan
+offline seterusnya. Istilah yang tidak terdaftar di kamus sekarang tertangkap,
+misalnya "Taksiran Nilai Ganti" ke MD Gross Amount. Yang skornya di bawah 0,85
+tetap ditandai perlu ditinjau. Catatan pemasangan: ada instalasi TensorFlow
+rusak di laptop ini yang membuat transformers gagal saat impor, ditambal di
+`Backend/mapping/matcher.py` dengan USE_TF=0 supaya hanya memakai torch.

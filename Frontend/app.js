@@ -1,262 +1,272 @@
 "use strict";
 
-// ---------------------------------------------------------- alamat backend
-// Urutan: ?api=... di URL  ->  yang pernah dipakai (localStorage)  ->  config.js
-function alamatBackend() {
-  const dariUrl = new URLSearchParams(location.search).get("api");
-  if (dariUrl) {
-    try { localStorage.setItem("alamat_backend", dariUrl); } catch (e) {}
-    return dariUrl.replace(/\/+$/, "");
+// Alamat backend: ?api=<url> menang dan diingat browser, lalu localStorage,
+// lalu nilai bawaan di config.js.
+function backendUrl() {
+  const fromQuery = new URLSearchParams(location.search).get("api");
+  if (fromQuery) {
+    try { localStorage.setItem("backend_url", fromQuery); } catch (e) {}
+    return fromQuery.replace(/\/+$/, "");
   }
-  let tersimpan = null;
-  try { tersimpan = localStorage.getItem("alamat_backend"); } catch (e) {}
-  return (tersimpan || window.ALAMAT_BACKEND || "").replace(/\/+$/, "");
+  let saved = null;
+  try { saved = localStorage.getItem("backend_url"); } catch (e) {}
+  return (saved || window.BACKEND_URL || "").replace(/\/+$/, "");
 }
-const API = alamatBackend();
+const API = backendUrl();
 
 const $ = (id) => document.getElementById(id);
 
-// Isi PDF datang dari luar dan ikut ditampilkan di halaman ini (nama perusahaan,
-// nama berkas, teks peringatan). Semuanya harus dilewatkan fungsi ini dulu,
-// kalau tidak PDF yang dirancang jahat bisa menyuntikkan HTML ke halaman.
-const LOLOS = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-function aman(t) {
-  return String(t == null ? "" : t).replace(/[&<>"']/g, (c) => LOLOS[c]);
+const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+function esc(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 }
 
-function ukuranTerbaca(b) {
+function humanSize(b) {
   if (b < 1024) return b + " B";
   if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " KB";
   return (b / 1024 / 1024).toFixed(1) + " MB";
 }
 
-// ------------------------------------------------------------- cek backend
-let batas = { berkas: 10, ukuran: 15 };
-let perluKode = false;
+// ---------------------------------------------------------------------- tema
+const themeToggle = $("theme-toggle");
+themeToggle.addEventListener("click", () => {
+  const root = document.documentElement;
+  const isDark = root.getAttribute("data-theme")
+    ? root.getAttribute("data-theme") === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = isDark ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+  try { localStorage.setItem("theme", next); } catch (e) {}
+});
 
-async function cekBackend() {
-  const lampu = $("lampu"), teks = $("lampu-teks");
+// ------------------------------------------------------------- cek backend
+let limits = { files: 10, size: 15 };
+let needsCode = false;
+
+async function checkBackend() {
+  const pill = $("status"), text = $("status-text");
   try {
     const r = await fetch(API + "/api/status", { signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error("status " + r.status);
     const d = await r.json();
 
-    batas = { berkas: d.maks_berkas, ukuran: d.maks_ukuran_mb };
-    $("maks-berkas").textContent = d.maks_berkas;
-    $("maks-ukuran").textContent = d.maks_ukuran_mb;
-    if (d.umur_sesi_menit) {
-      document.querySelectorAll(".umur-sesi")
-        .forEach((el) => { el.textContent = d.umur_sesi_menit; });
+    limits = { files: d.max_files, size: d.max_file_mb };
+    $("max-files").textContent = d.max_files;
+    $("max-size").textContent = d.max_file_mb;
+    if (d.session_minutes) {
+      document.querySelectorAll(".session-minutes")
+        .forEach((el) => { el.textContent = d.session_minutes; });
     }
 
-    perluKode = Boolean(d.perlu_kode);
-    $("baris-kode").classList.toggle("tersembunyi", !perluKode);
-    perbaruiTombol();
+    needsCode = Boolean(d.needs_code);
+    $("code-row").classList.toggle("hidden", !needsCode);
+    updateSubmit();
 
-    lampu.className = "lampu lampu-hidup";
-    teks.textContent = "Siap";
-    $("peringatan-mati").classList.add("tersembunyi");
+    pill.className = "status-pill status-live";
+    text.textContent = "Siap";
+    $("offline-notice").classList.add("hidden");
 
     if (!d.ocr) {
-      kabarAwal("kuning",
+      banner("amber",
         "OCR tidak aktif di server — PDF hasil pindaian tidak bisa dibaca isinya.");
     }
     return true;
   } catch (e) {
-    lampu.className = "lampu lampu-mati";
-    teks.textContent = "Tidak aktif";
-    $("peringatan-mati").classList.remove("tersembunyi");
+    pill.className = "status-pill status-down";
+    text.textContent = "Tidak aktif";
+    $("offline-notice").classList.remove("hidden");
     return false;
   }
 }
 
-function kabarAwal(warna, pesan) {
-  let w = $("kabar-awal");
-  if (!w) {
-    w = document.createElement("div");
-    w.id = "kabar-awal";
-    $("peringatan-mati").after(w);
+function banner(color, message) {
+  let box = $("startup-banner");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "startup-banner";
+    $("offline-notice").after(box);
   }
-  w.innerHTML = '<div class="kabar kabar-' + warna + '">' + aman(pesan) + "</div>";
+  box.innerHTML = '<div class="notice notice-' + color + '">' + esc(message) + "</div>";
 }
 
-// --------------------------------------------------------------- pilih PDF
-let terpilih = [];
+// ---------------------------------------------------------------- pilih PDF
+let chosen = [];
 
-const jatuhkan = $("jatuhkan"), inputBerkas = $("berkas");
+const dropzone = $("dropzone"), fileInput = $("file-input");
 
-jatuhkan.addEventListener("click", () => inputBerkas.click());
-jatuhkan.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputBerkas.click(); }
+dropzone.addEventListener("click", () => fileInput.click());
+dropzone.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
 });
 ["dragenter", "dragover"].forEach((n) =>
-  jatuhkan.addEventListener(n, (e) => { e.preventDefault(); jatuhkan.classList.add("siap"); }));
+  dropzone.addEventListener(n, (e) => { e.preventDefault(); dropzone.classList.add("is-over"); }));
 ["dragleave", "drop"].forEach((n) =>
-  jatuhkan.addEventListener(n, (e) => { e.preventDefault(); jatuhkan.classList.remove("siap"); }));
+  dropzone.addEventListener(n, (e) => { e.preventDefault(); dropzone.classList.remove("is-over"); }));
 
-jatuhkan.addEventListener("drop", (e) => tambah(e.dataTransfer.files));
-inputBerkas.addEventListener("change", () => { tambah(inputBerkas.files); inputBerkas.value = ""; });
+dropzone.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+fileInput.addEventListener("change", () => { addFiles(fileInput.files); fileInput.value = ""; });
 
-function tambah(daftar) {
-  const ditolak = [];
-  for (const f of daftar) {
+function addFiles(list) {
+  const rejected = [];
+  for (const f of list) {
     if (!f.name.toLowerCase().endsWith(".pdf")) {
-      ditolak.push(f.name + " (bukan PDF)"); continue;
+      rejected.push(f.name + " (bukan PDF)"); continue;
     }
-    if (f.size > batas.ukuran * 1024 * 1024) {
-      ditolak.push(f.name + " (lebih dari " + batas.ukuran + " MB)"); continue;
+    if (f.size > limits.size * 1024 * 1024) {
+      rejected.push(f.name + " (lebih dari " + limits.size + " MB)"); continue;
     }
-    if (terpilih.some((x) => x.name === f.name && x.size === f.size)) continue;
-    if (terpilih.length >= batas.berkas) {
-      ditolak.push(f.name + " (melebihi " + batas.berkas + " berkas)"); continue;
+    if (chosen.some((x) => x.name === f.name && x.size === f.size)) continue;
+    if (chosen.length >= limits.files) {
+      rejected.push(f.name + " (melebihi " + limits.files + " berkas)"); continue;
     }
-    terpilih.push(f);
+    chosen.push(f);
   }
-  if (ditolak.length) galat("Tidak bisa ditambahkan: " + ditolak.join(", "));
-  else sembunyikanGalat();
-  gambarDaftar();
+  if (rejected.length) showError("Tidak bisa ditambahkan: " + rejected.join(", "));
+  else hideError();
+  renderFileList();
 }
 
-function gambarDaftar() {
-  const ul = $("daftar-berkas");
-  ul.innerHTML = terpilih.map((f, i) =>
-    '<li><span class="nama">' + aman(f.name) + "</span>" +
-    '<span class="ukuran">' + ukuranTerbaca(f.size) + "</span>" +
-    '<button class="buang" data-i="' + i + '" title="Buang" aria-label="Buang ' +
-    aman(f.name) + '">&times;</button></li>').join("");
+function renderFileList() {
+  const ul = $("file-list");
+  ul.innerHTML = chosen.map((f, i) =>
+    '<li><span class="file-name">' + esc(f.name) + "</span>" +
+    '<span class="file-size">' + humanSize(f.size) + "</span>" +
+    '<button class="remove" data-i="' + i + '" title="Buang" aria-label="Buang ' +
+    esc(f.name) + '">&times;</button></li>').join("");
 
-  ul.querySelectorAll(".buang").forEach((b) =>
+  ul.querySelectorAll(".remove").forEach((b) =>
     b.addEventListener("click", () => {
-      terpilih.splice(Number(b.dataset.i), 1);
-      gambarDaftar();
+      chosen.splice(Number(b.dataset.i), 1);
+      renderFileList();
     }));
-  perbaruiTombol();
+  updateSubmit();
 }
 
-// ------------------------------------------------------------------ tombol
-const email = $("email"), tombol = $("tombol"), alasan = $("tombol-alasan");
-const kode = $("kode");
-email.addEventListener("input", perbaruiTombol);
-kode.addEventListener("input", perbaruiTombol);
+// ------------------------------------------------------------------- tombol
+const email = $("email"), submit = $("submit"), submitHint = $("submit-hint");
+const code = $("code");
+email.addEventListener("input", updateSubmit);
+code.addEventListener("input", updateSubmit);
 
-function perbaruiTombol() {
-  const adaEmail = email.value.trim().length > 0 && email.value.includes("@");
-  const adaBerkas = terpilih.length > 0;
-  const adaKode = !perluKode || kode.value.trim().length > 0;
-  tombol.disabled = !(adaEmail && adaBerkas && adaKode);
+function updateSubmit() {
+  const hasEmail = email.value.trim().length > 0 && email.value.includes("@");
+  const hasFiles = chosen.length > 0;
+  const hasCode = !needsCode || code.value.trim().length > 0;
+  submit.disabled = !(hasEmail && hasFiles && hasCode);
 
-  if (!adaBerkas) alasan.textContent = "Pilih minimal satu PDF.";
-  else if (!adaEmail) alasan.textContent = "Isi email Anda terlebih dahulu.";
-  else if (!adaKode) alasan.textContent = "Masukkan kode akses.";
-  else alasan.textContent = terpilih.length + " PDF siap diproses";
+  if (!hasFiles) submitHint.textContent = "Pilih minimal satu PDF.";
+  else if (!hasEmail) submitHint.textContent = "Isi email Anda terlebih dahulu.";
+  else if (!hasCode) submitHint.textContent = "Masukkan kode akses.";
+  else submitHint.textContent = chosen.length + " PDF siap diproses";
 }
 
-function galat(p) {
-  const g = $("galat");
-  g.textContent = p;
-  g.classList.remove("tersembunyi");
+function showError(message) {
+  const box = $("error");
+  box.textContent = message;
+  box.classList.remove("hidden");
 }
-function sembunyikanGalat() { $("galat").classList.add("tersembunyi"); }
+function hideError() { $("error").classList.add("hidden"); }
 
-// ------------------------------------------------------------------ proses
-tombol.addEventListener("click", async () => {
-  sembunyikanGalat();
-  $("hasil").classList.add("tersembunyi");
-  $("memuat").classList.remove("tersembunyi");
-  tombol.disabled = true;
+// ------------------------------------------------------------------- proses
+submit.addEventListener("click", async () => {
+  hideError();
+  $("results").classList.add("hidden");
+  $("loading").classList.remove("hidden");
+  submit.disabled = true;
 
   const fd = new FormData();
   fd.append("email", email.value.trim());
-  if (perluKode) fd.append("kode", kode.value.trim());
-  terpilih.forEach((f) => fd.append("berkas", f, f.name));
+  if (needsCode) fd.append("code", code.value.trim());
+  chosen.forEach((f) => fd.append("files", f, f.name));
 
   try {
-    const r = await fetch(API + "/api/proses", { method: "POST", body: fd });
+    const r = await fetch(API + "/api/process", { method: "POST", body: fd });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "Gagal memproses (HTTP " + r.status + ")");
-    gambarHasil(d);
+    renderResults(d);
   } catch (e) {
-    galat(e.message === "Failed to fetch"
+    showError(e.message === "Failed to fetch"
       ? "Tidak bisa menghubungi backend. Komputer pemroses mungkin sedang mati."
       : e.message);
-    cekBackend();
+    checkBackend();
   } finally {
-    $("memuat").classList.add("tersembunyi");
-    perbaruiTombol();
+    $("loading").classList.add("hidden");
+    updateSubmit();
   }
 });
 
-// ------------------------------------------------------------------- hasil
-let sesiSekarang = null;   // dipakai tombol "selesai" dan sendBeacon
-let sudahUnduh = false;
+// -------------------------------------------------------------------- hasil
+let currentSession = null;
+let hasDownloaded = false;
 
-function gambarHasil(d) {
-  sesiSekarang = d.sesi;
-  sudahUnduh = false;
-  $("hasil-selesai").classList.add("tersembunyi");
-  $("tombol-selesai").disabled = false;
-  $("tombol-selesai").textContent = "Saya sudah selesai — hapus data saya sekarang";
-  const s = d.ringkasan;
-  $("statistik").innerHTML = [
-    ["PDF diproses", s.pdf, "var(--biru)"],
-    ["Baris jadi", s.berhasil, "var(--hijau)"],
-    ["Perlu ditinjau", s.ditinjau, "var(--kuning)"],
-    ["Dilewati", s.dilewati, "var(--merah)"],
+function renderResults(d) {
+  currentSession = d.session;
+  hasDownloaded = false;
+  $("finish-result").classList.add("hidden");
+  $("finish-btn").disabled = false;
+  $("finish-btn").textContent = "Saya sudah selesai — hapus data saya sekarang";
+
+  const s = d.summary;
+  $("stats").innerHTML = [
+    ["PDF diproses", s.pdfs, "var(--blue)"],
+    ["Baris jadi", s.ok, "var(--green)"],
+    ["Perlu ditinjau", s.review, "var(--amber)"],
+    ["Dilewati", s.skipped, "var(--red)"],
   ].map((x) =>
     '<div class="stat" style="border-left-color:' + x[2] + '">' +
-    '<div class="angka" style="color:' + x[2] + '">' + x[1] + "</div>" +
+    '<div class="value" style="color:' + x[2] + '">' + x[1] + "</div>" +
     '<div class="label">' + x[0] + "</div></div>").join("");
 
-  let c = "";
-  (d.catatan || []).forEach((t) => {
-    c += '<div class="kabar kabar-biru">' + aman(t) + "</div>";
+  let notes = "";
+  (d.notes || []).forEach((t) => {
+    notes += '<div class="notice notice-blue">' + esc(t) + "</div>";
   });
-  if ((d.perusahaan_baru || []).length) {
-    c += '<div class="kabar kabar-hijau">Perusahaan baru dikenali: ' +
-         d.perusahaan_baru.map(aman).join(", ") + "</div>";
+  if ((d.new_companies || []).length) {
+    notes += '<div class="notice notice-green">Perusahaan baru dikenali: ' +
+             d.new_companies.map(esc).join(", ") + "</div>";
   }
-  $("blok-catatan").innerHTML = c;
+  $("block-notes").innerHTML = notes;
 
-  $("blok-excel").innerHTML = (d.excel || []).length
+  $("block-excel").innerHTML = (d.excel || []).length
     ? "<h3>File Excel yang dihasilkan</h3>" + d.excel.map((e) =>
-        '<div class="baris-excel"><div class="keterangan">' +
-        '<div class="prsh">' + aman(e.perusahaan) + "</div>" +
-        '<div class="rinci">' + e.baris + " baris &middot; " + aman(e.nama_file) +
-        (e.dropdown_utuh ? "" :
-          ' &middot; <span style="color:var(--merah)">dropdown tidak utuh (' +
-          e.dropdown_hasil + "/" + e.dropdown_asli + ")</span>") +
+        '<div class="excel-row"><div class="excel-info">' +
+        '<div class="excel-company">' + esc(e.company) + "</div>" +
+        '<div class="excel-detail">' + e.rows + " baris &middot; " + esc(e.file_name) +
+        (e.dropdowns_intact ? "" :
+          ' &middot; <span style="color:var(--red)">dropdown tidak utuh (' +
+          e.dropdowns_after + "/" + e.dropdowns_before + ")</span>") +
         "</div></div>" +
-        '<a class="unduh" href="' + API + "/api/unduh/" +
-        encodeURIComponent(d.sesi) + "/" + encodeURIComponent(e.id) +
+        '<a class="download" href="' + API + "/api/download/" +
+        encodeURIComponent(d.session) + "/" + encodeURIComponent(e.id) +
         '">&#8595; Unduh Excel</a></div>').join("")
-    : '<div class="kabar kabar-kuning">Tidak ada Excel yang dihasilkan.</div>';
+    : '<div class="notice notice-amber">Tidak ada Excel yang dihasilkan.</div>';
 
-  $("blok-tinjau").innerHTML = (d.ditinjau || []).length
-    ? "<h3>Perlu ditinjau</h3>" + d.ditinjau.map((h) =>
-        "<details><summary>&#9888; " + aman(h.nama) + " — " + aman(h.perusahaan) +
-        " (keyakinan " + h.keyakinan + ')</summary><div class="isi"><ul>' +
-        h.peringatan.map((w) => "<li>" + aman(w) + "</li>").join("") +
+  $("block-review").innerHTML = (d.review || []).length
+    ? "<h3>Perlu ditinjau</h3>" + d.review.map((h) =>
+        "<details><summary>&#9888; " + esc(h.file) + " — " + esc(h.company) +
+        " (keyakinan " + h.confidence + ')</summary><div class="details-body"><ul>' +
+        h.warnings.map((w) => "<li>" + esc(w) + "</li>").join("") +
         "</ul></div></details>").join("")
     : "";
 
-  $("blok-lewat").innerHTML = (d.dilewati || []).length
-    ? "<h3>Dilewati</h3>" + d.dilewati.map((h) =>
-        '<div class="kabar kabar-kuning">' + aman(h.nama) + " — " +
-        aman(h.alasan) + "</div>").join("")
+  $("block-skipped").innerHTML = (d.skipped || []).length
+    ? "<h3>Dilewati</h3>" + d.skipped.map((h) =>
+        '<div class="notice notice-amber">' + esc(h.file) + " — " +
+        esc(h.reason) + "</div>").join("")
     : "";
 
-  document.querySelectorAll(".unduh").forEach((a) =>
-    a.addEventListener("click", () => { sudahUnduh = true; }));
+  document.querySelectorAll(".download").forEach((a) =>
+    a.addEventListener("click", () => { hasDownloaded = true; }));
 
-  $("hasil").classList.remove("tersembunyi");
-  $("hasil").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("results").classList.remove("hidden");
+  $("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// ---------------------------------------------------- selesai & hapus data
-$("tombol-selesai").addEventListener("click", async () => {
-  if (!sesiSekarang) return;
+// -------------------------------------------------------- selesai & hapus
+$("finish-btn").addEventListener("click", async () => {
+  if (!currentSession) return;
 
-  const peringatan = sudahUnduh
+  const warning = hasDownloaded
     ? `Hapus semua data Anda dari server sekarang?
 
 Yang dihapus: file Excel hasil, profil sementara, dan laporan proses.
@@ -265,51 +275,49 @@ Tautan unduhan di atas akan berhenti berfungsi.`
 
 Kalau dihapus sekarang, hasilnya ikut hilang dan PDF harus diproses ulang
 dari awal. Lanjutkan?`;
-  if (!confirm(peringatan)) return;
+  if (!confirm(warning)) return;
 
-  const t = $("tombol-selesai");
-  t.disabled = true;
-  t.textContent = "Menghapus…";
+  const btn = $("finish-btn");
+  btn.disabled = true;
+  btn.textContent = "Menghapus…";
 
   try {
-    const r = await fetch(API + "/api/selesai/" + encodeURIComponent(sesiSekarang),
+    const r = await fetch(API + "/api/finish/" + encodeURIComponent(currentSession),
                           { method: "POST" });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "Gagal menghapus (HTTP " + r.status + ")");
 
-    // tautan unduhan sudah tidak berlaku -- matikan supaya tidak menyesatkan
-    document.querySelectorAll(".unduh").forEach((a) => {
+    document.querySelectorAll(".download").forEach((a) => {
       a.removeAttribute("href");
-      a.classList.add("unduh-mati");
+      a.classList.add("download-off");
       a.textContent = "Sudah dihapus";
     });
 
-    const k = $("hasil-selesai");
-    k.innerHTML = '<div class="kabar kabar-hijau"><strong>' + aman(d.pesan) +
-      "</strong>" + (d.berkas ? "<p>" + d.berkas +
+    const box = $("finish-result");
+    box.innerHTML = '<div class="notice notice-green"><strong>' + esc(d.message) +
+      "</strong>" + (d.files ? "<p>" + d.files +
       " berkas sementara dihapus dari server.</p>" : "") + "</div>";
-    k.classList.remove("tersembunyi");
-    t.classList.add("tersembunyi");
-    sesiSekarang = null;
+    box.classList.remove("hidden");
+    btn.classList.add("hidden");
+    currentSession = null;
   } catch (e) {
-    t.disabled = false;
-    t.textContent = "Coba hapus lagi";
-    galat(e.message === "Failed to fetch"
+    btn.disabled = false;
+    btn.textContent = "Coba hapus lagi";
+    showError(e.message === "Failed to fetch"
       ? "Tidak bisa menghubungi backend untuk menghapus. Data tetap akan " +
         "terhapus otomatis saat waktunya habis."
       : e.message);
   }
 });
 
-// Kalau pengunjung menutup tab tanpa menekan tombol, anggap dia sudah selesai.
-// sendBeacon tetap terkirim walau halamannya sudah ditutup, tidak seperti fetch.
+// Menutup tab juga menghapus sesi. Harus sendBeacon: fetch dibatalkan browser
+// begitu halaman ditutup, jadi permintaannya tidak pernah sampai.
 window.addEventListener("pagehide", () => {
-  if (sesiSekarang && navigator.sendBeacon) {
-    navigator.sendBeacon(API + "/api/selesai/" + encodeURIComponent(sesiSekarang));
+  if (currentSession && navigator.sendBeacon) {
+    navigator.sendBeacon(API + "/api/finish/" + encodeURIComponent(currentSession));
   }
 });
 
-// -------------------------------------------------------------------- mulai
-cekBackend();
-setInterval(cekBackend, 30000);
-perbaruiTombol();
+checkBackend();
+setInterval(checkBackend, 30000);
+updateSubmit();

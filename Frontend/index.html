@@ -5,107 +5,119 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DLA to Excel Report</title>
 <meta name="description" content="Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar, otomatis.">
-<link rel="icon" href="logo.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128196;</text></svg>">
 <link rel="stylesheet" href="styles.css">
+<script>
+  // Dijalankan sebelum halaman digambar supaya tema tidak berkedip saat dimuat.
+  try {
+    var saved = localStorage.getItem("theme");
+    if (saved) document.documentElement.setAttribute("data-theme", saved);
+  } catch (e) {}
+</script>
 </head>
 <body>
 
-<header class="atas">
-  <div class="wadah atas-isi">
+<header class="site-header">
+  <div class="container header-inner">
     <img src="logo.png" alt="" class="logo">
-    <div>
+    <div class="header-title">
       <h1>DLA to Excel Report</h1>
-      <p class="sub">Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar</p>
+      <p class="tagline">Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar</p>
     </div>
-    <div id="lampu" class="lampu lampu-cek"><span class="titik"></span><span id="lampu-teks">Menghubungi…</span></div>
+    <div id="status" class="status-pill status-checking">
+      <span class="dot"></span><span id="status-text">Menghubungi…</span>
+    </div>
+    <button id="theme-toggle" class="theme-toggle" type="button"
+            aria-label="Ganti tema terang/gelap" title="Ganti tema">
+      <span class="theme-icon"></span>
+    </button>
   </div>
 </header>
 
-<main class="wadah">
+<main class="container">
 
-  <div id="peringatan-mati" class="kabar kabar-merah tersembunyi">
+  <div id="offline-notice" class="notice notice-red hidden">
     <strong>Backend sedang tidak aktif.</strong>
     <p>Pemrosesan PDF berjalan di komputer pemilik aplikasi, dan komputer itu
        sedang mati atau terowongannya belum dinyalakan. Silakan coba lagi nanti.</p>
   </div>
 
-  <section class="kartu">
-    <p class="langkah-judul"><span class="nomor">1</span> Email Anda</p>
-    <p class="petunjuk">Diisi ke kolom <strong>N — Reported Email Address</strong> di setiap baris Excel.</p>
+  <section class="card">
+    <p class="step-title"><span class="step-number">1</span> Email Anda</p>
+    <p class="hint">Diisi ke kolom <strong>N — Reported Email Address</strong> di setiap baris Excel.</p>
     <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
 
-    <div id="baris-kode" class="tersembunyi">
-      <p class="petunjuk" style="margin:14px 0 8px">
-        Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
-      <input type="password" id="kode" placeholder="Kode akses" autocomplete="off">
+    <div id="code-row" class="hidden">
+      <p class="hint code-hint">Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
+      <input type="password" id="code" placeholder="Kode akses" autocomplete="off">
     </div>
   </section>
 
-  <section class="kartu">
-    <p class="langkah-judul"><span class="nomor">2</span> Berkas PDF</p>
-    <p class="petunjuk">PDF digital maupun hasil pindaian. Maksimal <span id="maks-berkas">10</span> berkas,
-       <span id="maks-ukuran">15</span> MB per berkas.</p>
+  <section class="card">
+    <p class="step-title"><span class="step-number">2</span> Berkas PDF</p>
+    <p class="hint">PDF digital maupun hasil pindaian. Maksimal <span id="max-files">10</span> berkas,
+       <span id="max-size">15</span> MB per berkas.</p>
 
-    <div id="jatuhkan" class="jatuhkan" tabindex="0" role="button"
+    <div id="dropzone" class="dropzone" tabindex="0" role="button"
          aria-label="Pilih atau jatuhkan berkas PDF">
-      <div class="jatuhkan-ikon">📄</div>
-      <p class="jatuhkan-utama">Jatuhkan PDF di sini</p>
-      <p class="jatuhkan-sub">atau klik untuk memilih dari komputer</p>
+      <div class="dropzone-icon">📄</div>
+      <p class="dropzone-main">Jatuhkan PDF di sini</p>
+      <p class="dropzone-sub">atau klik untuk memilih dari komputer</p>
     </div>
-    <input type="file" id="berkas" accept="application/pdf,.pdf" multiple hidden>
+    <input type="file" id="file-input" accept="application/pdf,.pdf" multiple hidden>
 
-    <ul id="daftar-berkas" class="daftar-berkas"></ul>
+    <ul id="file-list" class="file-list"></ul>
   </section>
 
-  <section class="kartu kartu-jalan">
-    <button id="tombol" disabled>Proses sekarang</button>
-    <p id="tombol-alasan" class="petunjuk tengah">Isi email dan pilih minimal satu PDF.</p>
-    <div id="memuat" class="memuat tersembunyi">
-      <div class="putar"></div>
-      <p id="memuat-teks">Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</p>
+  <section class="card card-action">
+    <button id="submit" disabled>Proses sekarang</button>
+    <p id="submit-hint" class="hint center">Isi email dan pilih minimal satu PDF.</p>
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</p>
     </div>
   </section>
 
-  <div id="galat" class="kabar kabar-merah tersembunyi"></div>
+  <div id="error" class="notice notice-red hidden"></div>
 
-  <section id="hasil" class="tersembunyi">
+  <section id="results" class="hidden">
     <h2>Hasil</h2>
-    <div id="statistik" class="statistik"></div>
-    <div id="blok-catatan"></div>
-    <div id="blok-excel"></div>
-    <div id="blok-tinjau"></div>
-    <div id="blok-lewat"></div>
+    <div id="stats" class="stats"></div>
+    <div id="block-notes"></div>
+    <div id="block-excel"></div>
+    <div id="block-review"></div>
+    <div id="block-skipped"></div>
 
-    <div class="kartu kartu-selesai">
-      <p class="langkah-judul"><span class="nomor">3</span> Selesai &amp; hapus data</p>
+    <div class="card card-cleanup">
+      <p class="step-title"><span class="step-number">3</span> Selesai &amp; hapus data</p>
 
-      <div class="kabar kabar-kuning" style="margin:12px 0 16px">
+      <div class="notice notice-amber cleanup-warning">
         <strong>Data Anda masih tersimpan sementara di server.</strong>
         <p>Unduh Excel yang Anda perlukan lebih dulu, lalu tekan tombol di bawah.
            Yang akan dihapus saat itu juga:</p>
-        <ul style="margin:8px 0 8px 20px">
+        <ul>
           <li>File Excel hasil</li>
           <li>Profil perusahaan sementara yang dipelajari dari PDF Anda</li>
           <li>Laporan proses</li>
         </ul>
         <p>PDF yang Anda unggah <strong>sudah dihapus</strong> sejak Excel-nya
            selesai dibuat. Kalau tombol ini tidak ditekan, semuanya tetap terhapus
-           otomatis dalam <span class="umur-sesi">15</span> menit.</p>
+           otomatis dalam <span class="session-minutes">15</span> menit.</p>
       </div>
 
-      <button id="tombol-selesai" class="tombol-bahaya">
+      <button id="finish-btn" class="btn-danger">
         Saya sudah selesai &mdash; hapus data saya sekarang</button>
-      <div id="hasil-selesai" class="tersembunyi"></div>
+      <div id="finish-result" class="hidden"></div>
     </div>
   </section>
 
 </main>
 
-<footer class="bawah">
-  <div class="wadah">
-    <p id="teks-privasi">PDF Anda dihapus segera setelah Excel-nya jadi. File Excel
-       dihapus otomatis setelah <span class="umur-sesi">15</span> menit. Tidak ada
-       dokumen yang disimpan permanen, dan berkas tidak melewati Vercel.</p>
+<footer class="site-footer">
+  <div class="container">
+    <p>PDF Anda dihapus segera setelah Excel-nya jadi. File Excel dihapus otomatis
+       setelah <span class="session-minutes">15</span> menit. Tidak ada dokumen yang
+       disimpan permanen, dan berkas tidak melewati Vercel.</p>
   </div>
 </footer>
 

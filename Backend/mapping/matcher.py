@@ -12,10 +12,10 @@ from rapidfuzz import fuzz
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from . import config
-from .excel import Kolom, Skema
+from .. import settings
+from ..build.excel import Column, Schema
 
-KAMUS: dict[str, list[str]] = {
+SYNONYMS: dict[str, list[str]] = {
     "B": ["tanggal kejadian", "tanggal kerugian", "tgl kejadian", "tanggal loss",
           "date of loss", "tanggal peristiwa", "dol"],
 
@@ -66,7 +66,7 @@ KAMUS: dict[str, list[str]] = {
     "BT": ["share aab", "porsi aab", "bagian aab", "share", "porsi"],
 }
 
-def bersihkan(s: str) -> str:
+def simplify(s: str) -> str:
     s = re.sub(r"\(.*?\)", " ", str(s))
     s = re.sub(r"[^\w\s]", " ", s.lower())
     s = re.sub(r"\b(nomor|number|nomer)\b", "no", s)
@@ -74,25 +74,24 @@ def bersihkan(s: str) -> str:
 
 
 @dataclass
-class Cocok:
-    kolom: str | None
+class Match:
+    column: str | None
     header: str | None
-    skor: float
-    cara: str
-    alasan: str = ""
+    score: float
+    method: str
+    reason: str = ""
 
     @property
-    def diterima(self) -> bool:
-        return self.kolom is not None
+    def accepted(self) -> bool:
+        return self.column is not None
 
     @property
-    def perlu_ditinjau(self) -> bool:
-        return self.diterima and self.cara == "analisis_makna" and self.skor < config.YAKIN
+    def needs_review(self) -> bool:
+        return self.accepted and self.method == "semantic" and self.score < settings.CONFIDENT
 
 
-# jalur utama
 @lru_cache(maxsize=1)
-def _model_utama():
+def _semantic_model():
     try:
         from sentence_transformers import SentenceTransformer
         return SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
@@ -100,108 +99,108 @@ def _model_utama():
         return None
 
 
-class Pencocok:
-    def __init__(self, skema: Skema):
-        self.skema = skema
-        self.target: list[Kolom] = skema.target_pencocokan
-        self.model = _model_utama()
-        self._sinonim = {k.huruf: [k.nama_bersih] + KAMUS.get(k.huruf, [])
-                         for k in self.target}
-        self._siapkan_tfidf()
-        self._siapkan_model()
+class Matcher:
+    def __init__(self, schema: Schema):
+        self.schema = schema
+        self.targets: list[Column] = schema.match_targets
+        self.model = _semantic_model()
+        self._synonyms = {k.letter: [k.clean_name] + SYNONYMS.get(k.letter, [])
+                         for k in self.targets}
+        self._build_tfidf()
+        self._build_embeddings()
 
     @property
-    def jalur(self) -> str:
+    def mode(self) -> str:
         return ("utama (model makna)" if self.model
                 else "cadangan (kamus + kemiripan kata)")
 
-    def _siapkan_tfidf(self) -> None:
-        korpus = [" ".join(bersihkan(x) for x in self._sinonim[k.huruf])
-                  for k in self.target]
+    def _build_tfidf(self) -> None:
+        corpus = [" ".join(simplify(x) for x in self._synonyms[k.letter])
+                  for k in self.targets]
         self._tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4))
-        self._matriks = self._tfidf.fit_transform(korpus) if korpus else None
+        self._matrix = self._tfidf.fit_transform(corpus) if corpus else None
 
-    def _siapkan_model(self) -> None:
+    def _build_embeddings(self) -> None:
         self._emb = None
         if self.model is None:
             return
-        frasa, milik = [], []
-        for i, k in enumerate(self.target):
-            for f in self._sinonim[k.huruf]:
-                frasa.append(f)
-                milik.append(i)
+        phrases, owner = [], []
+        for i, k in enumerate(self.targets):
+            for f in self._synonyms[k.letter]:
+                phrases.append(f)
+                owner.append(i)
         try:
             import numpy as np
-            self._emb = self.model.encode(frasa, normalize_embeddings=True)
-            self._milik = np.asarray(milik)
+            self._emb = self.model.encode(phrases, normalize_embeddings=True)
+            self._owner = np.asarray(owner)
         except Exception:
             self._emb = None
 
-    def cocokkan(self, param_pdf: str) -> Cocok:
-        p = bersihkan(param_pdf)
+    def match(self, pdf_param: str) -> Match:
+        p = simplify(pdf_param)
         if not p:
-            return Cocok(None, None, 0.0, "tidak_cocok", "parameter kosong")
+            return Match(None, None, 0.0, "no_match", "parameter kosong")
 
-        # sama persis
-        for k in self.target:
-            if p == bersihkan(k.nama_bersih):
-                return Cocok(k.huruf, k.nama_bersih, 1.0, "sama_persis",
+        # exact
+        for k in self.targets:
+            if p == simplify(k.clean_name):
+                return Match(k.letter, k.clean_name, 1.0, "exact",
                              "nama parameter sama dengan kolom standar")
 
-        # kamus
-        for k in self.target:
-            for sinonim in KAMUS.get(k.huruf, []):
-                if p == bersihkan(sinonim):
-                    return Cocok(k.huruf, k.nama_bersih, 0.97, "kamus",
-                                 "terdaftar sebagai padanan " + k.nama_bersih)
+        # dictionary
+        for k in self.targets:
+            for synonym in SYNONYMS.get(k.letter, []):
+                if p == simplify(synonym):
+                    return Match(k.letter, k.clean_name, 0.97, "dictionary",
+                                 "terdaftar sebagai padanan " + k.clean_name)
 
-        # analisis makna
-        peringkat = self._peringkat(param_pdf, p)
-        if peringkat:
-            kolom, skor = peringkat[0]
-            if skor >= config.RAGU:
-                c = Cocok(kolom.huruf, kolom.nama_bersih, skor, "analisis_makna",
-                          "mirip makna dengan " + kolom.nama_bersih)
-                if len(peringkat) > 1 and skor - peringkat[1][1] < 0.08:
-                    c.alasan += "; hampir seimbang dengan " + peringkat[1][0].nama_bersih
+        # semantic
+        ranking = self._rank(pdf_param, p)
+        if ranking:
+            column, score = ranking[0]
+            if score >= settings.UNSURE:
+                c = Match(column.letter, column.clean_name, score, "semantic",
+                          "mirip makna dengan " + column.clean_name)
+                if len(ranking) > 1 and score - ranking[1][1] < 0.08:
+                    c.reason += "; hampir seimbang dengan " + ranking[1][0].clean_name
                 return c
 
-        dekat = ""
-        if peringkat:
-            dekat = " (paling dekat: %s, skor %.2f)" % (
-                peringkat[0][0].nama_bersih, peringkat[0][1])
-        return Cocok(None, None, peringkat[0][1] if peringkat else 0.0, "tidak_cocok",
-                     "tidak ada parameter yang cocok di excelnya" + dekat)
+        closest = ""
+        if ranking:
+            closest = " (paling dekat: %s, skor %.2f)" % (
+                ranking[0][0].clean_name, ranking[0][1])
+        return Match(None, None, ranking[0][1] if ranking else 0.0, "no_match",
+                     "tidak ada parameter yang cocok di excelnya" + closest)
 
-    def _peringkat(self, asli: str, bersih: str) -> list[tuple[Kolom, float]]:
-        makna = None
+    def _rank(self, original: str, cleaned: str) -> list[tuple[Column, float]]:
+        semantic = None
         if self._emb is not None:
             try:
                 import numpy as np
-                sim = self._emb @ self.model.encode([asli], normalize_embeddings=True)[0]
-                # tiap kolom diwakili sinonimnya yang paling mirip
-                makna = np.array([
-                    float(sim[self._milik == i].max()) if (self._milik == i).any() else 0.0
-                    for i in range(len(self.target))
+                sim = self._emb @ self.model.encode([original], normalize_embeddings=True)[0]
+                # each column scores as its best-matching synonym
+                semantic = np.array([
+                    float(sim[self._owner == i].max()) if (self._owner == i).any() else 0.0
+                    for i in range(len(self.targets))
                 ])
             except Exception:
-                makna = None
+                semantic = None
 
         tf = None
-        if self._matriks is not None:
-            tf = cosine_similarity(self._tfidf.transform([bersih]), self._matriks).ravel()
+        if self._matrix is not None:
+            tf = cosine_similarity(self._tfidf.transform([cleaned]), self._matrix).ravel()
 
-        skor: list[tuple[Kolom, float]] = []
-        for i, k in enumerate(self.target):
-            kandidat = [bersihkan(x) for x in self._sinonim[k.huruf]]
-            mirip_huruf = max(fuzz.token_set_ratio(bersih, c) for c in kandidat) / 100.0
-            cadangan = 0.55 * mirip_huruf + 0.45 * (float(tf[i]) if tf is not None else 0.0)
-            nilai = (0.75 * float(makna[i]) + 0.25 * cadangan
-                     if makna is not None else cadangan)
-            skor.append((k, round(min(nilai, 0.999), 3)))
+        scores: list[tuple[Column, float]] = []
+        for i, k in enumerate(self.targets):
+            variants = [simplify(x) for x in self._synonyms[k.letter]]
+            char_ratio = max(fuzz.token_set_ratio(cleaned, c) for c in variants) / 100.0
+            fallback = 0.55 * char_ratio + 0.45 * (float(tf[i]) if tf is not None else 0.0)
+            value = (0.75 * float(semantic[i]) + 0.25 * fallback
+                     if semantic is not None else fallback)
+            scores.append((k, round(min(value, 0.999), 3)))
 
-        skor.sort(key=lambda x: x[1], reverse=True)
-        return skor
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return scores
 
-def model_makna_ada() -> bool:
-    return _model_utama() is not None
+def semantic_model_available() -> bool:
+    return _semantic_model() is not None

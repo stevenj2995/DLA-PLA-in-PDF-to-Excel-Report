@@ -11,109 +11,109 @@ from pathlib import Path
 import openpyxl
 from openpyxl.utils import get_column_letter
 
-from . import config
+from .. import settings
 
-# membaca struktur file standar
+# ---------------------------------------- reading the template structure
 
 @dataclass
-class Kolom:
-    indeks: int # 1-based
-    huruf: str # "A", "AB", ...
-    grup: str | None # header baris 2
-    header: str | None # header baris 3 -> acuan pencocokan
-    flag: str | None # "Mandatory" / "Optional"
-    peran: str = "kosong"
-    format_angka: str = "@"
+class Column:
+    index: int          # 1-based
+    letter: str        # "A", "AB", ...
+    group: str | None  # merged header on row 2
+    header: str | None # header on row 3 -- what parameters are matched against
+    flag: str | None   # "Mandatory" / "Optional"
+    role: str = "empty"
+    number_format: str = "@"
 
     @property
-    def nama(self) -> str:
-        return (self.header or self.grup or self.huruf).strip()
+    def name(self) -> str:
+        return (self.header or self.group or self.letter).strip()
 
     @property
-    def nama_bersih(self) -> str:
-        n = self.nama.split("\n")[0]
+    def clean_name(self) -> str:
+        n = self.name.split("\n")[0]
         return " ".join(n.replace("(YYYY-MM-DD)", "").replace("(HH:MM)", "")
                          .replace("(Y/N)", "").split()).strip()
 
     @property
-    def nama_lengkap(self) -> str:
-        if self.grup and self.header and self.grup != self.header:
-            return f"{self.grup} - {self.nama_bersih}"
-        return self.nama_bersih
+    def full_name(self) -> str:
+        if self.group and self.header and self.group != self.header:
+            return f"{self.group} - {self.clean_name}"
+        return self.clean_name
 
 
 @dataclass
-class Skema:
-    kolom: list[Kolom] = field(default_factory=list)
+class Schema:
+    columns: list[Column] = field(default_factory=list)
 
     def __iter__(self):
-        return iter(self.kolom)
+        return iter(self.columns)
 
     def __len__(self):
-        return len(self.kolom)
+        return len(self.columns)
 
     @property
-    def target_pencocokan(self) -> list[Kolom]:
-        # kolom yang boleh jadi tujuan pencocokan parameter PDF
-        return [k for k in self.kolom if k.peran == "dari_pdf"]
+    def match_targets(self) -> list[Column]:
+        # only these columns may receive a value matched from the PDF
+        return [k for k in self.columns if k.role == "from_pdf"]
 
-    def ringkasan(self) -> dict[str, int]:
+    def summary(self) -> dict[str, int]:
         out: dict[str, int] = {}
-        for k in self.kolom:
-            out[k.peran] = out.get(k.peran, 0) + 1
+        for k in self.columns:
+            out[k.role] = out.get(k.role, 0) + 1
         return out
 
 
-def _peran(huruf: str) -> str:
-    if huruf == config.KOLOM_NOMOR_URUT:
-        return "nomor"
-    if huruf in config.KOLOM_KONSTAN:
-        return "konstan"
-    if huruf in config.KOLOM_RUMUS:
-        return "rumus"
-    if huruf in config.KOLOM_DARI_PDF:
-        return "dari_pdf"
-    if huruf in config.KOLOM_MONITORING:
+def _role_of(letter: str) -> str:
+    if letter == settings.ROW_NUMBER_COLUMN:
+        return "row_number"
+    if letter in settings.CONSTANT_COLUMNS:
+        return "constant"
+    if letter in settings.FORMULA_COLUMNS:
+        return "formula"
+    if letter in settings.COLUMNS_FROM_PDF:
+        return "from_pdf"
+    if letter in settings.MONITORING_COLUMNS:
         return "monitoring"
-    if huruf in config.KOLOM_FEE:
+    if letter in settings.FEE_COLUMNS:
         return "fee"
-    return "kosong"
+    return "empty"
 
 
 @lru_cache(maxsize=4)
-def muat(path_standar: str | None = None) -> Skema:
-    path = Path(path_standar) if path_standar else config.file_standar()
+def load_schema(template_path: str | None = None) -> Schema:
+    path = Path(template_path) if template_path else settings.template_file()
     wb = openpyxl.load_workbook(path, read_only=False)
-    ws = wb[config.SHEET_UTAMA]
+    ws = wb[settings.MAIN_SHEET]
 
-    grup: dict[int, str] = {}
+    group: dict[int, str] = {}
     for m in ws.merged_cells.ranges:
-        if m.min_row == config.BARIS_GRUP:
-            nilai = ws.cell(config.BARIS_GRUP, m.min_col).value
+        if m.min_row == settings.GROUP_ROW:
+            value = ws.cell(settings.GROUP_ROW, m.min_col).value
             for c in range(m.min_col, m.max_col + 1):
-                if nilai is not None:
-                    grup[c] = str(nilai).strip()
+                if value is not None:
+                    group[c] = str(value).strip()
 
-    kolom: list[Kolom] = []
+    columns: list[Column] = []
     for c in range(1, ws.max_column + 1):
-        huruf = get_column_letter(c)
-        g = grup.get(c)
+        letter = get_column_letter(c)
+        g = group.get(c)
         if g is None:
-            v = ws.cell(config.BARIS_GRUP, c).value
+            v = ws.cell(settings.GROUP_ROW, c).value
             g = str(v).strip() if v is not None else None
-        h = ws.cell(config.BARIS_HEADER, c).value
-        f = ws.cell(config.BARIS_FLAG, c).value
-        fmt = ws.cell(config.BARIS_DATA_AWAL, c).number_format or "@"
-        kolom.append(Kolom(
-            indeks=c, huruf=huruf, grup=g,
+        h = ws.cell(settings.HEADER_ROW, c).value
+        f = ws.cell(settings.FLAG_ROW, c).value
+        fmt = ws.cell(settings.FIRST_DATA_ROW, c).number_format or "@"
+        columns.append(Column(
+            index=c, letter=letter, group=g,
             header=str(h).strip() if h is not None else None,
             flag=str(f).strip() if f is not None else None,
-            peran=_peran(huruf), format_angka=fmt,
+            role=_role_of(letter), number_format=fmt,
         ))
     wb.close()
-    return Skema(kolom)
+    return Schema(columns)
 
-# menulis hasil ke file Excel
+# ------------------------------------- writing rows into a copy of the template
 
 RE_EXTLST = re.compile(r"<extLst>.*?</extLst>", re.S)
 RE_XR_UID = re.compile(r'\s+xr:uid="[^"]*"')
@@ -121,17 +121,18 @@ RE_X14_DV = re.compile(r"<x14:dataValidation\b")
 
 
 @dataclass
-class Baris:
-    nilai: dict[str, object] = field(default_factory=dict) # kunci = huruf kolom
-    sumber: str = "" # nama file PDF asalnya
-    peringatan: list[str] = field(default_factory=list)
+class Row:
+    values: dict[str, object] = field(default_factory=dict)  # keyed by column letter
+    source: str = ""  # file name of the PDF it came from
+    warnings: list[str] = field(default_factory=list)
 
 
-# nama part XML untuk sheet MosyClaimTask
-def _sheet_xml_utama(zf: zipfile.ZipFile) -> str:
+# openpyxl drops cross-sheet validations, so the dropdowns are patched back in
+# at the XML level; this finds the sheet part to patch.
+def _main_sheet_part(zf: zipfile.ZipFile) -> str:
     wb_xml = zf.read("xl/workbook.xml").decode("utf-8")
     m = re.search(
-        r'<sheet[^>]*name="%s"[^>]*r:id="(rId\d+)"' % re.escape(config.SHEET_UTAMA),
+        r'<sheet[^>]*name="%s"[^>]*r:id="(rId\d+)"' % re.escape(settings.MAIN_SHEET),
         wb_xml,
     )
     if not m:
@@ -144,8 +145,8 @@ def _sheet_xml_utama(zf: zipfile.ZipFile) -> str:
     return target if target.startswith("xl/") else f"xl/{target}"
 
 
-def _ambil_extlst(path_standar: Path, part: str) -> str | None:
-    with zipfile.ZipFile(path_standar) as z:
+def _read_extlst(template_path: Path, part: str) -> str | None:
+    with zipfile.ZipFile(template_path) as z:
         xml = z.read(part).decode("utf-8")
     m = RE_EXTLST.search(xml)
     if not m:
@@ -153,97 +154,97 @@ def _ambil_extlst(path_standar: Path, part: str) -> str | None:
     return RE_XR_UID.sub("", m.group(0))
 
 
-def _tambal_extlst(sumber: Path, tujuan: Path, part: str, blok: str) -> None:
-    with zipfile.ZipFile(sumber) as zin, \
-         zipfile.ZipFile(tujuan, "w", zipfile.ZIP_DEFLATED) as zout:
+def _patch_extlst(source: Path, destination: Path, part: str, block: str) -> None:
+    with zipfile.ZipFile(source) as zin, \
+         zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == part:
                 s = RE_EXTLST.sub("", data.decode("utf-8"))
-                s = s.replace("</worksheet>", blok + "</worksheet>")
+                s = s.replace("</worksheet>", block + "</worksheet>")
                 data = s.encode("utf-8")
             zout.writestr(item, data)
 
-def hitung_dropdown(path: Path) -> int:
+def count_dropdowns(path: Path) -> int:
     with zipfile.ZipFile(path) as z:
-        xml = z.read(_sheet_xml_utama(z)).decode("utf-8", "ignore")
+        xml = z.read(_main_sheet_part(z)).decode("utf-8", "ignore")
     return len(RE_X14_DV.findall(xml))
 
 
-def tulis(
-    baris: list[Baris],
-    tujuan: Path,
+def write_rows(
+    rows: list[Row],
+    destination: Path,
     *,
-    email_operator: str,
-    path_standar: Path | None = None,
-    skema: Skema | None = None,
-    mulai_nomor: int = 1,
+    operator_email: str,
+    template_path: Path | None = None,
+    schema: Schema | None = None,
+    start_number: int = 1,
 ) -> dict:
-    path_standar = Path(path_standar or config.file_standar())
-    skema = skema or muat(str(path_standar))
-    tujuan = Path(tujuan)
-    tujuan.parent.mkdir(parents=True, exist_ok=True)
+    template_path = Path(template_path or settings.template_file())
+    schema = schema or load_schema(str(template_path))
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(path_standar) as z:
-        part = _sheet_xml_utama(z)
-    blok = _ambil_extlst(path_standar, part)
-    dropdown_asli = hitung_dropdown(path_standar)
+    with zipfile.ZipFile(template_path) as z:
+        part = _main_sheet_part(z)
+    block = _read_extlst(template_path, part)
+    dropdowns_before = count_dropdowns(template_path)
 
-    wb = openpyxl.load_workbook(path_standar)
-    ws = wb[config.SHEET_UTAMA]
+    wb = openpyxl.load_workbook(template_path)
+    ws = wb[settings.MAIN_SHEET]
 
-    fmt = {k.huruf: ws.cell(config.BARIS_DATA_AWAL, k.indeks).number_format for k in skema}
+    fmt = {k.letter: ws.cell(settings.FIRST_DATA_ROW, k.index).number_format for k in schema}
 
-    for r in range(config.BARIS_DATA_AWAL, ws.max_row + 1):
+    for r in range(settings.FIRST_DATA_ROW, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
             ws.cell(r, c).value = None
 
-    konstan = dict(config.KOLOM_KONSTAN)
-    konstan[config.KOLOM_EMAIL_OPERATOR] = email_operator
+    constants = dict(settings.CONSTANT_COLUMNS)
+    constants[settings.OPERATOR_EMAIL_COLUMN] = operator_email
 
-    for i, b in enumerate(baris):
-        r = config.BARIS_DATA_AWAL + i
-        for k in skema:
-            sel = ws.cell(r, k.indeks)
-            sel.number_format = fmt.get(k.huruf, "@")
+    for i, b in enumerate(rows):
+        r = settings.FIRST_DATA_ROW + i
+        for k in schema:
+            cell = ws.cell(r, k.index)
+            cell.number_format = fmt.get(k.letter, "@")
 
-            if k.huruf == config.KOLOM_NOMOR_URUT:
-                sel.value = str(mulai_nomor + i)
-            elif k.huruf in konstan and k.huruf not in b.nilai:
-                v = konstan[k.huruf]
+            if k.letter == settings.ROW_NUMBER_COLUMN:
+                cell.value = str(start_number + i)
+            elif k.letter in constants and k.letter not in b.values:
+                v = constants[k.letter]
                 if v is not None:
-                    sel.value = v
-            elif k.huruf in config.KOLOM_RUMUS:
-                sel.value = _rumus(k.huruf, r, b)
-            elif k.huruf in b.nilai:
-                v = b.nilai[k.huruf]
-                sel.value = None if v is None or v == "" else v
+                    cell.value = v
+            elif k.letter in settings.FORMULA_COLUMNS:
+                cell.value = _formula(k.letter, r, b)
+            elif k.letter in b.values:
+                v = b.values[k.letter]
+                cell.value = None if v is None or v == "" else v
 
-    wb.save(tujuan)
+    wb.save(destination)
     wb.close()
 
-    dropdown_setelah = hitung_dropdown(tujuan)
-    if blok and dropdown_setelah < dropdown_asli:
-        sementara = tujuan.with_suffix(".tmp.xlsx")
-        shutil.move(str(tujuan), str(sementara))
+    dropdowns_after = count_dropdowns(destination)
+    if block and dropdowns_after < dropdowns_before:
+        temp_path = destination.with_suffix(".tmp.xlsx")
+        shutil.move(str(destination), str(temp_path))
         try:
-            _tambal_extlst(sementara, tujuan, part, blok)
+            _patch_extlst(temp_path, destination, part, block)
         finally:
-            sementara.unlink(missing_ok=True)
-        dropdown_setelah = hitung_dropdown(tujuan)
+            temp_path.unlink(missing_ok=True)
+        dropdowns_after = count_dropdowns(destination)
 
     return {
-        "file": str(tujuan),
-        "baris": len(baris),
-        "dropdown_asli": dropdown_asli,
-        "dropdown_hasil": dropdown_setelah,
-        "dropdown_utuh": dropdown_setelah == dropdown_asli,
+        "file": str(destination),
+        "rows": len(rows),
+        "dropdowns_before": dropdowns_before,
+        "dropdowns_after": dropdowns_after,
+        "dropdowns_intact": dropdowns_after == dropdowns_before,
     }
 
 
-def _rumus(huruf: str, r: int, b: Baris) -> str | None:
-    pola = config.KOLOM_RUMUS[huruf]
-    if huruf == "AR":
-        share = b.nilai.get("_share_aab")
-        return pola.format(r=r, share=share) if share else None
-    return pola.format(r=r)
+def _formula(letter: str, r: int, b: Row) -> str | None:
+    pattern = settings.FORMULA_COLUMNS[letter]
+    if letter == "AR":
+        share = b.values.get("_aab_share")
+        return pattern.format(r=r, share=share) if share else None
+    return pattern.format(r=r)
