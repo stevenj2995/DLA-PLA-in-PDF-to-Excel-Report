@@ -37,6 +37,16 @@ def cek_persiapan() -> bool:
     else:
         print("  [!]    OCR (Tesseract)   : tidak aktif -- PDF hasil pindaian "
               "tidak akan terbaca")
+
+    import os
+    if os.environ.get("KODE_AKSES", "").strip():
+        print("  [OK]   Kode akses        : aktif -- hanya yang tahu kode bisa "
+              "mengunggah")
+    else:
+        print("  [!]    Kode akses        : TIDAK dipasang -- siapa pun yang "
+              "punya tautannya bisa")
+        print("                             mengunggah. Pasang dengan: "
+              "set KODE_AKSES=kode-anda")
     return ok
 
 

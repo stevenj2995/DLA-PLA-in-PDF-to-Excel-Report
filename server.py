@@ -1,11 +1,18 @@
 """Backend untuk website publik. Jalankan di laptop ini: python server.py
 
 Halaman webnya sendiri di-host di Vercel (folder web/), tapi semua pemrosesan
-PDF terjadi di sini. Tidak ada dokumen yang disimpan permanen: setiap permintaan
-dikerjakan di folder sementara yang langsung dihapus setelah diunduh.
+PDF terjadi di sini. Berkas yang diunggah TIDAK pernah melewati Vercel --
+browser pengunjung mengirimnya langsung ke alamat terowongan backend ini.
+
+Umur berkas unggahan:
+  - PDF asli dihapus BEGITU Excel-nya jadi (hitungan detik)
+  - Excel hasil dihapus setelah UMUR_SESI, atau saat server dimatikan
+  - Folder yatim dari sesi sebelumnya dibersihkan saat server menyala
 """
 from __future__ import annotations
 
+import atexit
+import hmac
 import os
 import shutil
 import tempfile
@@ -26,7 +33,13 @@ from src import config, pdf_reader, pipeline
 MAKS_BERKAS = 10
 MAKS_UKURAN_BERKAS = 15 * 1024 * 1024      # 15 MB per PDF
 MAKS_UKURAN_TOTAL = 50 * 1024 * 1024       # 50 MB sekali proses
-UMUR_SESI = 30 * 60                        # hasil dibuang setelah 30 menit
+UMUR_SESI = 15 * 60                        # hasil dibuang setelah 15 menit
+JEDA_SAPU = 60                             # penyapu latar jalan tiap 1 menit
+
+# Kalau diisi, pengunjung wajib memasukkan kode ini sebelum bisa memproses.
+# Isi lewat variabel lingkungan:  set KODE_AKSES=rahasia123
+# Kosong = siapa pun yang punya tautannya bisa mengunggah.
+KODE_AKSES = os.environ.get("KODE_AKSES", "").strip()
 
 # Alamat tambahan yang boleh memanggil backend ini (domain sendiri, dsb).
 # Isi lewat variabel lingkungan ASAL_DIIZINKAN, dipisah koma.
@@ -86,8 +99,80 @@ def ruang_terisolasi():
 
 def _bersihkan_sesi_lama() -> None:
     batas = time.time() - UMUR_SESI
-    for sid in [s for s, d in _sesi.items() if d["waktu"] < batas]:
-        shutil.rmtree(_sesi.pop(sid)["ruang"], ignore_errors=True)
+    for sid in [s for s, d in list(_sesi.items()) if d["waktu"] < batas]:
+        d = _sesi.pop(sid, None)
+        if d:
+            shutil.rmtree(d["ruang"], ignore_errors=True)
+
+
+def _buang_semua_sesi() -> None:
+    """Dipanggil saat server dimatikan -- jangan tinggalkan berkas siapa pun."""
+    for sid in list(_sesi):
+        d = _sesi.pop(sid, None)
+        if d:
+            shutil.rmtree(d["ruang"], ignore_errors=True)
+
+
+def _sapu_folder_yatim() -> int:
+    """Buang folder dla_* yang sudah tidak dimiliki sesi mana pun.
+
+    Ini jaring pengaman untuk server yang mati mendadak (listrik putus, laptop
+    ditutup): daftar sesi ikut hilang bersama prosesnya, jadi folder PDF
+    pengunjung tidak akan pernah terhapus tanpa penyapu ini.
+
+    Hanya folder yang lebih tua dari UMUR_SESI yang dibuang. Batas umur itu
+    penting: tanpanya, menjalankan server kedua -- atau sekadar meng-import
+    modul ini dari skrip lain -- akan menghapus sesi yang sedang aktif di
+    server pertama, dan pengunjungnya tiba-tiba melihat "hasil kedaluwarsa".
+    """
+    n = 0
+    batas = time.time() - UMUR_SESI
+    aktif = {str(d["ruang"]) for d in _sesi.values()}
+    for f in Path(tempfile.gettempdir()).glob("dla_*"):
+        if not f.is_dir() or str(f) in aktif:
+            continue
+        try:
+            if f.stat().st_mtime > batas:
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(f, ignore_errors=True)
+        n += 1
+    return n
+
+
+def _penyapu_latar() -> None:
+    # Menyapu dua-duanya: sesi yang kedaluwarsa DAN folder yatim. Yang kedua
+    # tidak boleh dilewatkan -- folder yatim tidak ada di daftar _sesi, jadi
+    # kalau hanya sesi yang disapu, ia menganggur sampai server berikutnya
+    # menyala, dan itu bisa berhari-hari.
+    while True:
+        time.sleep(JEDA_SAPU)
+        try:
+            _bersihkan_sesi_lama()
+            _sapu_folder_yatim()
+        except Exception:
+            pass
+
+
+# Dijalankan saat modul diimpor, bukan di blok __main__ -- mulai.py menyalakan
+# server lewat "uvicorn server:app", jadi blok __main__ tidak pernah dieksekusi
+# dan pembersihan tidak akan pernah terjadi kalau ditaruh di sana.
+_YATIM = _sapu_folder_yatim()
+
+threading.Thread(target=_penyapu_latar, daemon=True).start()
+atexit.register(_buang_semua_sesi)
+
+
+def _hapus_semua_pdf(ruang: Path) -> int:
+    n = 0
+    for f in ruang.rglob("*.pdf"):
+        try:
+            f.unlink()
+            n += 1
+        except OSError:
+            pass
+    return n
 
 
 @app.get("/api/status")
@@ -103,11 +188,18 @@ def status():
         "ocr": pdf_reader.ocr_tersedia(),
         "maks_berkas": MAKS_BERKAS,
         "maks_ukuran_mb": MAKS_UKURAN_BERKAS // (1024 * 1024),
+        "perlu_kode": bool(KODE_AKSES),
+        "umur_sesi_menit": UMUR_SESI // 60,
     }
 
 
 @app.post("/api/proses")
-async def proses(email: str = Form(...), berkas: list[UploadFile] = File(...)):
+async def proses(email: str = Form(...), berkas: list[UploadFile] = File(...),
+                 kode: str = Form("")):
+    # compare_digest supaya lama pengecekan tidak membocorkan berapa banyak
+    # karakter awal yang sudah benar
+    if KODE_AKSES and not hmac.compare_digest(kode.strip(), KODE_AKSES):
+        raise HTTPException(403, "Kode akses salah.")
     if not email.strip():
         raise HTTPException(400, "Email wajib diisi.")
     if not berkas:
@@ -143,6 +235,11 @@ async def proses(email: str = Form(...), berkas: list[UploadFile] = File(...)):
 
             hasil = pipeline.proses(
                 email_operator=email.strip(), folder_input=masuk)
+
+            # PDF sudah tidak diperlukan lagi setelah Excel jadi. Pipeline
+            # memindahkannya ke OUTPUT/<perusahaan>/PDF/; buang sekarang juga
+            # supaya dokumen pengunjung tidak menunggu sampai sesi kedaluwarsa.
+            _hapus_semua_pdf(ruang)
 
             sid = uuid.uuid4().hex
             unduhan = {}
@@ -208,4 +305,6 @@ def unduh(sesi: str, fid: str):
 
 if __name__ == "__main__":
     import uvicorn
+    if _YATIM:
+        print(f"Dibersihkan: {_YATIM} folder sementara tertinggal dari sesi sebelumnya.")
     uvicorn.run(app, host="0.0.0.0", port=8000)

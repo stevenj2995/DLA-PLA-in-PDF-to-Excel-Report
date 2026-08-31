@@ -276,3 +276,74 @@ lingkungan `ASAL_DIIZINKAN` kalau pakai domain sendiri.
 `.gitignore` menahan `Input/`, `Output/`, `Memory/`, `Training and Testing
 Data/`, `Standar/*.xlsx`, dan semua `*.pdf`. Jangan dilonggarkan — repo ini
 pernah tidak sengaja memuat DLA asli bertanda tangan saat masih publik.
+
+---
+
+## Ke mana data unggahan sebenarnya pergi
+
+Ini penting dijawab jujur, karena dokumen yang diproses milik klien.
+
+```
+Browser pengunjung
+   │  PDF dikirim LANGSUNG ke alamat terowongan — TIDAK lewat Vercel.
+   │  Vercel hanya mengirim halaman HTML/CSS/JS, tidak pernah melihat berkas.
+   ▼
+Cloudflare (terowongan)        ← TLS berakhir di sini, lihat "Yang tidak bisa dijamin"
+   ▼
+Laptop ini — %LOCALAPPDATA%\Temp\dla_xxxx\
+   ├── MASUK/          PDF unggahan      → dihapus begitu Excel jadi
+   ├── OUTPUT/*.xlsx   hasil             → dihapus setelah UMUR_SESI (15 menit)
+   ├── OUTPUT/_LAPORAN_*.txt             → ikut terhapus bersama foldernya
+   └── MEMORY/*.json   profil sementara  → ikut terhapus, tidak ditulis balik
+```
+
+`Output/` dan `Memory/` asli **tidak pernah tersentuh** — semuanya dialihkan ke
+folder sementara oleh `ruang_terisolasi()`.
+
+### Empat lapis penghapusan
+
+| Lapis | Kapan | Menangani |
+|---|---|---|
+| Langsung | Detik setelah Excel jadi | PDF unggahan (`_hapus_semua_pdf`) |
+| Penyapu latar | Tiap 1 menit | Sesi kedaluwarsa + folder yatim |
+| `atexit` | Server dimatikan normal | Semua sesi yang masih hidup |
+| Sapu saat menyala | Server dinyalakan | Sisa dari server yang mati mendadak |
+
+Lapis keempat ada karena mati paksa (listrik putus, laptop ditutup) membuat
+daftar sesi hilang bersama prosesnya — tanpa itu, PDF pengunjung tertinggal di
+folder Temp selamanya. Sapu ini sengaja hanya menyentuh folder yang lebih tua
+dari `UMUR_SESI`, supaya menjalankan server kedua tidak menghapus sesi yang
+sedang aktif di server pertama.
+
+### Membatasi siapa yang boleh memakai
+
+Alamat `trycloudflare.com` bersifat publik: siapa pun yang punya tautannya bisa
+mengunggah. Pasang kode akses supaya tautan yang bocor tidak cukup:
+
+```bash
+set KODE_AKSES=kode-rahasia-anda
+python mulai.py
+```
+
+Halaman web otomatis menampilkan kotak kode kalau backend memintanya.
+
+### Yang TIDAK bisa dijamin
+
+Tiga hal yang harus disadari, bukan ditutupi:
+
+1. **Cloudflare bisa melihat isi berkas.** Terowongan mengakhiri TLS di server
+   Cloudflare, jadi secara teknis PDF terbaca di sana sebelum sampai ke laptop.
+   Kalau ini tidak dapat diterima, jangan pakai terowongan publik — pakai
+   jaringan kantor/VPN, atau jalankan `app.py` (Streamlit) secara lokal saja.
+
+2. **Setiap Excel hasil membawa 12 sheet referensi internal Astra** —
+   `CatastropheEvent` (register kejadian internal berikut tanggal dan lokasi),
+   `InsuranceCoverage` (374 kode produk), `SectionCode`, `InsuranceInterest`,
+   dan lainnya. Sheet itu **tidak bisa dibuang** karena dropdown di kolom-kolom
+   `MosyClaimTask` menunjuk ke sana. Artinya: memberi hasil ke orang luar =
+   memberikan struktur referensi internal Astra. Ini alasan terkuat untuk
+   memakai `KODE_AKSES`.
+
+3. **Berkas ada di folder Temp Windows** selama masa hidupnya, jadi bisa
+   terbaca oleh proses lain yang berjalan sebagai pengguna yang sama, dan bisa
+   ikut terjaring antivirus atau backup yang memindai folder itu.

@@ -32,6 +32,7 @@ function ukuranTerbaca(b) {
 
 // ------------------------------------------------------------- cek backend
 let batas = { berkas: 10, ukuran: 15 };
+let perluKode = false;
 
 async function cekBackend() {
   const lampu = $("lampu"), teks = $("lampu-teks");
@@ -43,6 +44,11 @@ async function cekBackend() {
     batas = { berkas: d.maks_berkas, ukuran: d.maks_ukuran_mb };
     $("maks-berkas").textContent = d.maks_berkas;
     $("maks-ukuran").textContent = d.maks_ukuran_mb;
+    if (d.umur_sesi_menit) $("umur-sesi").textContent = d.umur_sesi_menit;
+
+    perluKode = Boolean(d.perlu_kode);
+    $("baris-kode").classList.toggle("tersembunyi", !perluKode);
+    perbaruiTombol();
 
     lampu.className = "lampu lampu-hidup";
     teks.textContent = "Siap";
@@ -126,15 +132,20 @@ function gambarDaftar() {
 
 // ------------------------------------------------------------------ tombol
 const email = $("email"), tombol = $("tombol"), alasan = $("tombol-alasan");
+const kode = $("kode");
 email.addEventListener("input", perbaruiTombol);
+kode.addEventListener("input", perbaruiTombol);
 
 function perbaruiTombol() {
   const adaEmail = email.value.trim().length > 0 && email.value.includes("@");
   const adaBerkas = terpilih.length > 0;
-  tombol.disabled = !(adaEmail && adaBerkas);
-  alasan.textContent = adaBerkas
-    ? (adaEmail ? terpilih.length + " PDF siap diproses" : "Isi email Anda terlebih dahulu.")
-    : (adaEmail ? "Pilih minimal satu PDF." : "Isi email dan pilih minimal satu PDF.");
+  const adaKode = !perluKode || kode.value.trim().length > 0;
+  tombol.disabled = !(adaEmail && adaBerkas && adaKode);
+
+  if (!adaBerkas) alasan.textContent = "Pilih minimal satu PDF.";
+  else if (!adaEmail) alasan.textContent = "Isi email Anda terlebih dahulu.";
+  else if (!adaKode) alasan.textContent = "Masukkan kode akses.";
+  else alasan.textContent = terpilih.length + " PDF siap diproses";
 }
 
 function galat(p) {
@@ -153,6 +164,7 @@ tombol.addEventListener("click", async () => {
 
   const fd = new FormData();
   fd.append("email", email.value.trim());
+  if (perluKode) fd.append("kode", kode.value.trim());
   terpilih.forEach((f) => fd.append("berkas", f, f.name));
 
   try {

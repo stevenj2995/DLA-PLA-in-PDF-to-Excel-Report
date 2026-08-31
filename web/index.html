@@ -33,6 +33,12 @@
     <p class="langkah-judul"><span class="nomor">1</span> Email Anda</p>
     <p class="petunjuk">Diisi ke kolom <strong>N — Reported Email Address</strong> di setiap baris Excel.</p>
     <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
+
+    <div id="baris-kode" class="tersembunyi">
+      <p class="petunjuk" style="margin:14px 0 8px">
+        Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
+      <input type="password" id="kode" placeholder="Kode akses" autocomplete="off">
+    </div>
   </section>
 
   <section class="kartu">
@@ -75,8 +81,9 @@
 
 <footer class="bawah">
   <div class="wadah">
-    <p>Berkas yang Anda unggah diproses sementara lalu dihapus otomatis dalam 30 menit.
-       Tidak ada dokumen yang disimpan permanen.</p>
+    <p id="teks-privasi">PDF Anda dihapus segera setelah Excel-nya jadi. File Excel
+       dihapus otomatis setelah <span id="umur-sesi">15</span> menit. Tidak ada
+       dokumen yang disimpan permanen, dan berkas tidak melewati Vercel.</p>
   </div>
 </footer>
 

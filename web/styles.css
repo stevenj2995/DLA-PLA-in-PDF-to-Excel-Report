@@ -49,12 +49,14 @@ main{padding:28px 0 40px}
 .petunjuk{font-size:13px;color:var(--teks-lembut);margin:6px 0 14px}
 .petunjuk.tengah{text-align:center;margin:10px 0 0}
 
-input[type=email]{
+input[type=email],
+input[type=password]{
   width:100%;padding:11px 14px;font-size:14.5px;font-family:inherit;color:var(--teks);
   border:1px solid var(--biru-garis);border-radius:8px;background:var(--putih);
   transition:border-color .15s, box-shadow .15s;
 }
-input[type=email]:focus{
+input[type=email]:focus,
+input[type=password]:focus{
   outline:none;border-color:var(--biru);box-shadow:0 0 0 3px rgba(18,93,171,.13);
 }
 
