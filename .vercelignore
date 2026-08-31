@@ -1,0 +1,7 @@
+# Vercel hanya perlu isi folder Frontend/. Semua kode Python tetap di laptop
+# dan tidak boleh ikut terunggah -- kalau requirements.txt ikut, Vercel akan
+# mencoba membangunnya sebagai proyek Python dan gagal.
+*
+!Frontend
+!Frontend/**
+!vercel.json

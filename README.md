@@ -1,197 +1,125 @@
-# Otomasi Pembacaan PDF ke Excel
+# DLA to Excel Report
 
-Membaca PDF laporan klaim dari berbagai perusahaan, lalu menghasilkan file
-Excel yang mengikuti standar `MosyClaimTask` — satu file per perusahaan.
+Mengubah laporan DLA berbentuk PDF menjadi Excel sesuai template MosyClaimTask,
+otomatis. Pengunjung membuka halaman web, mengunggah PDF, dan mengunduh Excel
+yang sudah terisi.
 
-Berjalan **sepenuhnya offline**. Tidak ada data yang dikirim ke mana pun.
+Halaman webnya di-host di Vercel, tapi semua pemrosesan terjadi di laptop ini.
+Vercel hanya menyajikan halaman statis; PDF dikirim langsung dari browser
+pengunjung ke laptop lewat terowongan, tidak pernah melewati Vercel.
+Konsekuensinya: website hanya hidup selama laptop menyala dan `run.py` berjalan.
+Kalau ditutup, pengunjung melihat "Backend sedang tidak aktif". Itu bukan bug.
 
----
-
-## Cara kerja
-
-```
-PDF di INPUT/  →  baca isi  →  deteksi perusahaan  →  sortir ke folder
-                                      ↓
-                          (sekalian ambil profil memory perusahaan itu)
-                                      ↓
-                          susun baris  →  Excel di folder perusahaan
-```
-
-**Memory per perusahaan.** Waktu perusahaan baru pertama kali muncul, sistem
-mencocokkan nama parameter di PDF dengan kolom Excel standar, lalu menyimpan
-hasilnya. PDF berikutnya dari perusahaan yang sama langsung memakai peta itu
-tanpa mencocokkan ulang.
-
-Urutan pencocokan:
-
-| Kondisi | Tindakan |
-|---|---|
-| Nama parameter sama persis | Langsung dipakai, tetap disimpan ke memory |
-| Beda tulisan tapi sama arti | Dicocokkan lewat kamus / analisis makna, lalu disimpan |
-| Tidak ada yang cocok | Diisi `N/A: <alasan>` |
-
-Contoh lintas bahasa: PDF menulis `Date of Loss`, standar menulis
-`Tanggal Kejadian` — nol persen mirip secara tulisan, tapi tetap tersambung
-lewat kamus padanan.
-
----
-
-## Pemasangan
-
-```bash
-pip install -r requirements.txt
-```
-
-**OCR (untuk PDF hasil scan).** Pasang terpisah dari
-<https://github.com/UB-Mannheim/tesseract/wiki>, sertakan paket bahasa `ind`
-dan `eng`. Tanpa ini, PDF hasil scan tidak bisa dibaca.
-
-**Model makna (opsional).** `pip install sentence-transformers` — perlu
-internet sekali di awal, setelah itu offline selamanya. Tanpa ini program
-tetap jalan lewat jalur cadangan (kamus + kemiripan kata), hanya lebih sering
-meleset untuk istilah yang tidak terdaftar.
-
----
 
 ## Menjalankan
 
-**Lewat tampilan web:**
-
-```bash
-streamlit run app.py
+```
+python run.py
 ```
 
-**Lewat terminal:**
-
-```bash
-python run.py --email nama@asuransiastra.com
-python run.py --email nama@asuransiastra.com --folder "D:/laporan"
-python run.py --batalkan          # kembalikan PDF yang telanjur dipindah
-```
-
-**Memeriksa tanpa memproses apa pun:**
-
-```bash
-python cek.py kolom                    # 72 kolom standar beserta perannya
-python cek.py pdf "laporan.pdf"        # isi yang terbaca dari satu PDF
-python cek.py cocok "Nilai Kerugian"   # uji satu nama parameter
-python cek.py audit "laporan.pdf"      # cari data PDF yang tercecer
-```
-
----
-
-## Menguji ketepatan
-
-Dua lapis, dan bedanya penting:
-
-| | Menjawab | Butuh | Biaya |
-|---|---|---|---|
-| **Baca PDF** | Ada data yang tercecer? | tidak ada | detik per PDF |
-| **PDF → Excel** | Nilainya benar? | Excel isian manual | jam, sekali di awal |
-
-**Lapis 1 — `python cek.py audit`.** Tidak perlu kunci jawaban: PDF-nya sendiri
-yang jadi acuan. Perintah ini menyandingkan tiap baris mentah PDF dengan
-pasangan yang berhasil ditangkap, lalu menandainya:
+Perintah itu menyalakan server, membuka terowongan, mencetak alamat publiknya,
+dan menulis alamat itu ke `Frontend/config.js`. Karena alamat terowongan
+berganti setiap kali dinyalakan, halaman Vercel perlu diberi tahu:
 
 ```
-ok   Policy Number : 15022325000001-000275      D
---   Interest Insured : Port & Terminal Op...   (ditolak)
-!!   : Nett Amount IDR 2,644,476,650.00         TIDAK TERTANGKAP
+git add Frontend/config.js
+git commit -m "alamat backend baru"
+git push
 ```
 
-Yang dibaca cuma baris `!!`. Kalau isinya terlihat seperti data klaim, berarti
-ada yang tercecer. Kop surat, alamat, dan nomor izin wajar muncul di situ.
+Untuk mencoba tanpa deploy ulang, buka halamannya dengan tambahan
+`?api=<alamat>` di URL. Alamat itu diingat browser.
 
-Jalankan setiap kali ada **penerbit baru** — format yang belum pernah dilihat
-adalah tempat pembacaan jebol, bukan berkas ke-20 dari format yang sudah dikenal.
+Untuk mencoba sepenuhnya di laptop sendiri, jalankan `python run.py` di satu
+jendela, lalu di jendela lain `cd Frontend` dan `python -m http.server 3000`,
+kemudian buka `http://localhost:3000/?api=http://localhost:8000`.
 
-**Lapis 2 — kunci jawaban.** Isi Excel manual untuk 10–15 DLA dari penerbit
-yang berbeda-beda, jalankan sistem atas PDF yang sama, lalu bandingkan sel per
-sel. Hitung **per kolom**, bukan satu angka total — yang berguna adalah
-mengetahui kolom mana yang sering meleset.
 
-> Angka keyakinan di laporan **bukan** akurasi. Skor `0.80` berarti "model
-> menilai dua istilah ini mirip artinya", bukan "80% kemungkinan benar".
-
----
-
-## Struktur folder
+## Yang perlu dipasang
 
 ```
-STANDAR/           file Excel standar (acuan struktur, jangan dihapus)
-INPUT/             taruh PDF di sini
-OUTPUT/
-  <Grup>/<Perusahaan>/PDF/                 PDF asli setelah disortir
-  <Grup>/<Perusahaan>/<Perusahaan>_YYYYMMDD.xlsx
-  _TIDAK_TERDETEKSI/                       PDF yang perusahaannya tidak dikenali
-  _LAPORAN_*.txt                           ringkasan tiap proses
-  _catatan_pemindahan.jsonl                catatan agar pemindahan bisa dibatalkan
-MEMORY/            profil per perusahaan (JSON, boleh diedit manual)
-src/               kode
+pip install -r requirements.txt
+winget install UB-Mannheim.TesseractOCR
+winget install --id Cloudflare.cloudflared
 ```
 
----
+Tesseract dipakai untuk PDF hasil pindaian; tanpa itu PDF pindaian dilewati,
+bukan dibaca separuh. Cloudflared dipakai untuk membuka terowongan; tanpa itu
+backend hanya bisa dihubungi dari laptop sendiri.
 
-## Isi kode
+Kalau backend dibuka ke internet, pasang kode akses lebih dulu:
+`set ACCESS_CODE=kode-anda`.
 
-Tujuh modul, mengikuti urutan kerjanya:
 
-| Berkas | Isinya |
-|---|---|
-| `src/config.py` | Semua pengaturan dan asumsi. Tidak ada logika di sini. |
-| `src/pdf_reader.py` | **1.** Membuka PDF, menyusun ulang baris dari posisi kata, OCR kalau hasil scan |
-| `src/teks.py` | **2.** Mengupas teks: tanggal, jam, uang, persen — dan nama perusahaan tertanggung |
-| `src/matcher.py` | **3.** Mencocokkan nama parameter di PDF dengan kolom Excel standar |
-| `src/memori.py` | **4.** Profil memory per perusahaan + memindahkan PDF ke folder tujuannya |
-| `src/excel.py` | **5.** Membaca struktur file standar, lalu menulis hasil tanpa merusak dropdown |
-| `src/pipeline.py` | Perekat: menjalankan langkah 1–5 secara berurutan |
+## Isi folder
 
-Ditambah dua berkas tampilan — `src/tampilan.py` (potongan HTML) dan
-`src/styles.css` (warna dan tata letak) — yang hanya dipakai oleh `app.py`.
+```
+run.py              satu-satunya perintah untuk menyalakan semuanya
+Backend/            semua kode pemroses
+Frontend/           halaman yang dilihat pengunjung, di-deploy ke Vercel
+Template/           file Excel acuan, jangan dihapus
+Docs/               catatan tentang apa yang masih perlu dikerjakan
+Memory/             profil per perusahaan (JSON, boleh diedit manual)
+Output/             peninggalan jalur lama, sudah tidak ditulis siapa pun
+```
 
-Pintu masuknya tiga: `app.py` (web), `run.py` (terminal), `cek.py` (alat
-pemeriksa, tidak ikut jalan saat proses normal).
+Isi Backend, mengikuti urutan kerjanya:
 
-PDF asli **dipindah**, bukan disalin. Semua pemindahan tercatat, jadi bisa
-dikembalikan dengan `python run.py --batalkan` kalau ada yang nyasar.
+```
+Backend/server.py               menerima unggahan, mengatur sesi, menghapus jejak
+Backend/pipeline.py             menjalankan seluruh alur dari PDF sampai Excel
+Backend/settings.py             semua pengaturan dan asumsi
+Backend/extract/pdf_reader.py   membuka PDF, menyusun ulang baris, OCR bila perlu
+Backend/extract/text.py         mengupas tanggal/jam/uang, mendeteksi perusahaan
+Backend/mapping/matcher.py      mencocokkan parameter PDF ke kolom Excel
+Backend/mapping/memory.py       profil per perusahaan, memindahkan PDF
+Backend/build/excel.py          menulis Excel tanpa merusak dropdown
+```
 
----
 
-## Tiga tingkat keyakinan
+## Cara kerjanya
 
-| Tingkat | Perlakuan |
-|---|---|
-| Yakin | Masuk folder perusahaannya, tanpa warning |
-| Ragu | Tetap masuk folder tebakan terbaik, **diberi warning** |
-| Tidak tahu | Masuk `_TIDAK_TERDETEKSI`, tidak dipaksa menebak |
+Setiap PDF dibaca dengan menyusun ulang barisnya dari posisi kata, bukan dari
+urutan baca mentah, supaya label dan nilainya tetap bersebelahan. Nama
+perusahaan diambil dari label tertanggung ("Insured Name", "Name of Insured",
+"Tertanggung"), bukan ditebak. Tiap pasangan parameter-nilai dicarikan kolomnya
+secara berjenjang: profil perusahaan yang sudah ada, lalu kecocokan persis,
+lalu kamus sinonim, lalu analisis makna. Yang cocok lewat analisis makna dengan
+skor rendah ditandai "perlu ditinjau" dan skornya dicetak.
 
----
+Hasilnya satu Excel per perusahaan per hari, ditulis di atas salinan file
+template. Openpyxl membuang validasi data lintas-sheet saat menyimpan, jadi
+jumlah dropdown dihitung sebelum dan sesudah menulis, dan kalau berkurang,
+bloknya ditambal kembali di tingkat XML. Angka dropdown ini ikut ditampilkan di
+halaman hasil supaya kalau suatu saat rusak, langsung kelihatan.
 
-## Kalau tebakan folder salah
+Skor yang muncul di laporan bukan akurasi. Skor 0,80 berarti dua istilah dinilai
+mirip artinya, bukan 80 persen kemungkinan benar.
 
-Pindahkan foldernya manual, lalu perbaiki file profil di `MEMORY/`. Ubah
-`grup` atau `folder` di file JSON-nya. Tanpa itu, proses berikutnya akan
-membuat folder salah yang sama lagi.
 
----
+## Soal data pengunjung
 
-## Catatan teknis
+Setiap permintaan dikerjakan di folder sementara yang terisolasi. Profil
+perusahaan disalin masuk supaya deteksi tetap akurat, tapi apa pun yang
+dipelajari dari PDF pengunjung ikut terhapus bersama foldernya. Memory asli di
+laptop tidak pernah tersentuh.
 
-**Excel dibuat dengan menyalin file standar**, bukan dibangun dari nol. File
-standar punya 11 dropdown lintas-sheet yang tersimpan sebagai `<extLst>`, dan
-`openpyxl` menghapus semuanya begitu file disimpan ulang. Jadi setelah data
-ditulis, blok itu dipasang kembali. Setiap file hasil diperiksa otomatis —
-kalau jumlah dropdown tidak utuh, muncul peringatan.
+PDF yang diunggah dihapus begitu Excel-nya jadi, dalam hitungan detik. Excel
+hasil dihapus setelah 15 menit, atau saat pengunjung menekan tombol "hapus data
+saya sekarang", atau saat ia menutup tab. Folder yang tertinggal karena server
+mati mendadak disapu saat server berikutnya menyala.
 
-**Tanggal ditulis sebagai teks**, bukan tipe tanggal Excel. Kalau ditulis
-sebagai tanggal asli, Excel mengubah tampilannya dan format `YYYY-MM-DD` yang
-diminta sistem tujuan bisa rusak.
+Batas yang dipasang: maksimal 10 PDF sekali proses, 15 MB per berkas, 50 MB
+total, hanya .pdf, dan satu proses pada satu waktu.
 
----
+Satu hal yang tidak bisa dijamin: terowongan Cloudflare mengakhiri TLS di server
+Cloudflare, jadi secara teknis isi PDF terbaca di sana sebelum sampai ke laptop.
+Kalau itu tidak dapat diterima, jangan pakai terowongan publik — pakai jaringan
+kantor, atau jalankan semuanya lokal seperti di bagian Menjalankan.
 
-## Yang belum diputuskan
 
-Lihat [CONCERNS.md](CONCERNS.md) — 14 poin, masing-masing menunjuk baris config
-yang perlu diubah begitu jawabannya ada.
+## Sebelum dipakai serius
 
-Yang paling menghambat: **tanggal kaki surat masuk kolom S atau kolom C/T.**
+Baca `Docs/CONCERNS.md`. Isinya daftar hal yang masih perlu dikerjakan atau
+masih menunggu jawaban, termasuk satu yang harus Anda lakukan sendiri: membuka
+file hasil di Microsoft Excel dan memastikan dropdown-nya benar-benar muncul.
