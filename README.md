@@ -300,14 +300,29 @@ Laptop ini — %LOCALAPPDATA%\Temp\dla_xxxx\
 `Output/` dan `Memory/` asli **tidak pernah tersentuh** — semuanya dialihkan ke
 folder sementara oleh `ruang_terisolasi()`.
 
-### Empat lapis penghapusan
+### Enam lapis penghapusan
+
+Dua yang pertama dikendalikan pengunjung; empat sisanya jaring pengaman.
 
 | Lapis | Kapan | Menangani |
 |---|---|---|
 | Langsung | Detik setelah Excel jadi | PDF unggahan (`_hapus_semua_pdf`) |
+| **Tombol "saya sudah selesai"** | Saat pengunjung menekannya | Seluruh sesi, seketika (`/api/selesai`) |
+| **Menutup halaman** | Tab ditutup / pindah halaman | Seluruh sesi, lewat `navigator.sendBeacon` |
 | Penyapu latar | Tiap 1 menit | Sesi kedaluwarsa + folder yatim |
 | `atexit` | Server dimatikan normal | Semua sesi yang masih hidup |
 | Sapu saat menyala | Server dinyalakan | Sisa dari server yang mati mendadak |
+
+Pengunjung melihat panel peringatan kuning bersama hasilnya: apa yang masih
+tersimpan, apa yang akan dihapus, dan bahwa PDF-nya sendiri sudah hilang.
+Menekan tombolnya memunculkan konfirmasi — dan kalau Excel-nya belum diunduh,
+peringatannya berbeda dan lebih tegas, karena hasilnya akan ikut hilang.
+
+`sendBeacon` dipakai, bukan `fetch`, karena permintaan `fetch` dibatalkan
+browser begitu halamannya ditutup; beacon tetap terkirim. Terverifikasi jalan
+saat pengunjung menutup halaman secara normal. Yang tidak tertangkap: browser
+yang mati paksa (crash, baterai habis) — itu ditangani lapis keempat sampai
+keenam.
 
 Lapis keempat ada karena mati paksa (listrik putus, laptop ditutup) membuat
 daftar sesi hilang bersama prosesnya — tanpa itu, PDF pengunjung tertinggal di

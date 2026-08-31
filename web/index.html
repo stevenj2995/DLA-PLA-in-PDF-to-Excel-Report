@@ -75,6 +75,28 @@
     <div id="blok-excel"></div>
     <div id="blok-tinjau"></div>
     <div id="blok-lewat"></div>
+
+    <div class="kartu kartu-selesai">
+      <p class="langkah-judul"><span class="nomor">3</span> Selesai &amp; hapus data</p>
+
+      <div class="kabar kabar-kuning" style="margin:12px 0 16px">
+        <strong>Data Anda masih tersimpan sementara di server.</strong>
+        <p>Unduh Excel yang Anda perlukan lebih dulu, lalu tekan tombol di bawah.
+           Yang akan dihapus saat itu juga:</p>
+        <ul style="margin:8px 0 8px 20px">
+          <li>File Excel hasil</li>
+          <li>Profil perusahaan sementara yang dipelajari dari PDF Anda</li>
+          <li>Laporan proses</li>
+        </ul>
+        <p>PDF yang Anda unggah <strong>sudah dihapus</strong> sejak Excel-nya
+           selesai dibuat. Kalau tombol ini tidak ditekan, semuanya tetap terhapus
+           otomatis dalam <span class="umur-sesi">15</span> menit.</p>
+      </div>
+
+      <button id="tombol-selesai" class="tombol-bahaya">
+        Saya sudah selesai &mdash; hapus data saya sekarang</button>
+      <div id="hasil-selesai" class="tersembunyi"></div>
+    </div>
   </section>
 
 </main>
@@ -82,7 +104,7 @@
 <footer class="bawah">
   <div class="wadah">
     <p id="teks-privasi">PDF Anda dihapus segera setelah Excel-nya jadi. File Excel
-       dihapus otomatis setelah <span id="umur-sesi">15</span> menit. Tidak ada
+       dihapus otomatis setelah <span class="umur-sesi">15</span> menit. Tidak ada
        dokumen yang disimpan permanen, dan berkas tidak melewati Vercel.</p>
   </div>
 </footer>

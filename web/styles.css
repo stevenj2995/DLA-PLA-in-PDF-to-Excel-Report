@@ -156,3 +156,17 @@ details .isi li{margin-left:18px;margin-top:5px}
   .baris-excel{flex-direction:column;align-items:stretch}
   .unduh{text-align:center}
 }
+
+/* ------------------------------------------------- selesai & hapus data */
+.kartu-selesai{margin-top:16px}
+.kartu-selesai .kabar ul{font-size:13px}
+button.tombol-bahaya{
+  width:100%;padding:12px 20px;font-size:14.5px;font-weight:650;font-family:inherit;
+  color:#fff;background:var(--merah);border:none;border-radius:8px;cursor:pointer;
+  transition:background .15s;
+}
+button.tombol-bahaya:hover:not(:disabled){background:#B93A3A}
+button.tombol-bahaya:disabled{background:#A9B8CA;cursor:not-allowed}
+.unduh.unduh-mati{
+  background:#A9B8CA;cursor:not-allowed;pointer-events:none;
+}

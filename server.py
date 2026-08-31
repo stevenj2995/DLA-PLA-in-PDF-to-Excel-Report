@@ -303,6 +303,43 @@ def unduh(sesi: str, fid: str):
                    "spreadsheetml.sheet")
 
 
+@app.post("/api/selesai/{sesi}")
+def selesai(sesi: str):
+    """Dipanggil pengunjung saat menekan "saya sudah selesai".
+
+    Menghapus seluruh jejak sesi itu sekarang juga, tanpa menunggu UMUR_SESI:
+    Excel hasil, profil perusahaan sementara, laporan, dan folder induknya.
+    (PDF unggahannya sendiri sudah dihapus sejak Excel-nya jadi.)
+
+    Sengaja tidak melempar error kalau sesinya tidak ada -- pengunjung yang
+    menekan tombol dua kali, atau yang sesinya sudah kedaluwarsa duluan, tetap
+    harus melihat jawaban "sudah bersih", bukan pesan gagal yang bikin ragu.
+    """
+    d = _sesi.pop(sesi, None)
+    if d is None:
+        return {"terhapus": True, "berkas": 0,
+                "pesan": "Tidak ada data tersisa untuk sesi ini."}
+
+    ruang: Path = d["ruang"]
+    try:
+        jumlah = sum(1 for f in ruang.rglob("*") if f.is_file())
+    except OSError:
+        jumlah = 0
+    shutil.rmtree(ruang, ignore_errors=True)
+
+    # laporkan apa adanya -- kalau ada yang tersisa (mis. berkas terkunci
+    # Windows karena sedang dibuka), pengunjung berhak tahu
+    masih_ada = ruang.exists()
+    return {
+        "terhapus": not masih_ada,
+        "berkas": jumlah,
+        "pesan": ("Semua data Anda sudah dihapus dari server."
+                  if not masih_ada else
+                  "Sebagian berkas tidak bisa dihapus sekarang; akan dihapus "
+                  "otomatis dalam beberapa menit."),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     if _YATIM:

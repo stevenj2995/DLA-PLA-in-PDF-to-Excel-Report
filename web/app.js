@@ -44,7 +44,10 @@ async function cekBackend() {
     batas = { berkas: d.maks_berkas, ukuran: d.maks_ukuran_mb };
     $("maks-berkas").textContent = d.maks_berkas;
     $("maks-ukuran").textContent = d.maks_ukuran_mb;
-    if (d.umur_sesi_menit) $("umur-sesi").textContent = d.umur_sesi_menit;
+    if (d.umur_sesi_menit) {
+      document.querySelectorAll(".umur-sesi")
+        .forEach((el) => { el.textContent = d.umur_sesi_menit; });
+    }
 
     perluKode = Boolean(d.perlu_kode);
     $("baris-kode").classList.toggle("tersembunyi", !perluKode);
@@ -184,7 +187,15 @@ tombol.addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------------- hasil
+let sesiSekarang = null;   // dipakai tombol "selesai" dan sendBeacon
+let sudahUnduh = false;
+
 function gambarHasil(d) {
+  sesiSekarang = d.sesi;
+  sudahUnduh = false;
+  $("hasil-selesai").classList.add("tersembunyi");
+  $("tombol-selesai").disabled = false;
+  $("tombol-selesai").textContent = "Saya sudah selesai — hapus data saya sekarang";
   const s = d.ringkasan;
   $("statistik").innerHTML = [
     ["PDF diproses", s.pdf, "var(--biru)"],
@@ -234,9 +245,69 @@ function gambarHasil(d) {
         aman(h.alasan) + "</div>").join("")
     : "";
 
+  document.querySelectorAll(".unduh").forEach((a) =>
+    a.addEventListener("click", () => { sudahUnduh = true; }));
+
   $("hasil").classList.remove("tersembunyi");
   $("hasil").scrollIntoView({ behavior: "smooth", block: "start" });
 }
+
+// ---------------------------------------------------- selesai & hapus data
+$("tombol-selesai").addEventListener("click", async () => {
+  if (!sesiSekarang) return;
+
+  const peringatan = sudahUnduh
+    ? `Hapus semua data Anda dari server sekarang?
+
+Yang dihapus: file Excel hasil, profil sementara, dan laporan proses.
+Tautan unduhan di atas akan berhenti berfungsi.`
+    : `Anda BELUM mengunduh file Excel-nya.
+
+Kalau dihapus sekarang, hasilnya ikut hilang dan PDF harus diproses ulang
+dari awal. Lanjutkan?`;
+  if (!confirm(peringatan)) return;
+
+  const t = $("tombol-selesai");
+  t.disabled = true;
+  t.textContent = "Menghapus…";
+
+  try {
+    const r = await fetch(API + "/api/selesai/" + encodeURIComponent(sesiSekarang),
+                          { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || "Gagal menghapus (HTTP " + r.status + ")");
+
+    // tautan unduhan sudah tidak berlaku -- matikan supaya tidak menyesatkan
+    document.querySelectorAll(".unduh").forEach((a) => {
+      a.removeAttribute("href");
+      a.classList.add("unduh-mati");
+      a.textContent = "Sudah dihapus";
+    });
+
+    const k = $("hasil-selesai");
+    k.innerHTML = '<div class="kabar kabar-hijau"><strong>' + aman(d.pesan) +
+      "</strong>" + (d.berkas ? "<p>" + d.berkas +
+      " berkas sementara dihapus dari server.</p>" : "") + "</div>";
+    k.classList.remove("tersembunyi");
+    t.classList.add("tersembunyi");
+    sesiSekarang = null;
+  } catch (e) {
+    t.disabled = false;
+    t.textContent = "Coba hapus lagi";
+    galat(e.message === "Failed to fetch"
+      ? "Tidak bisa menghubungi backend untuk menghapus. Data tetap akan " +
+        "terhapus otomatis saat waktunya habis."
+      : e.message);
+  }
+});
+
+// Kalau pengunjung menutup tab tanpa menekan tombol, anggap dia sudah selesai.
+// sendBeacon tetap terkirim walau halamannya sudah ditutup, tidak seperti fetch.
+window.addEventListener("pagehide", () => {
+  if (sesiSekarang && navigator.sendBeacon) {
+    navigator.sendBeacon(API + "/api/selesai/" + encodeURIComponent(sesiSekarang));
+  }
+});
 
 // -------------------------------------------------------------------- mulai
 cekBackend();
