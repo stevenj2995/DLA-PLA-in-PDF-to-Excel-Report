@@ -3,7 +3,6 @@ openpyxl>=3.1
 PyMuPDF>=1.24
 rapidfuzz>=3.0
 scikit-learn>=1.3
-streamlit>=1.30
 
 # OCR untuk PDF hasil scan.
 # Program Tesseract dipasang terpisah (sudah terpasang di laptop ini):
@@ -16,8 +15,7 @@ Pillow>=10.0
 # setelah itu jalan offline. Tanpa ini program tetap jalan lewat jalur cadangan.
 sentence-transformers>=3.0
 
-# Backend untuk website publik (server.py + mulai.py). Tidak diperlukan
-# kalau kamu hanya memakai app.py (Streamlit) atau run.py (CLI).
+# Backend yang melayani halaman web (server.py + mulai.py).
 fastapi>=0.110
 uvicorn>=0.27
 python-multipart>=0.0.9

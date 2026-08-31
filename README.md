@@ -55,28 +55,15 @@ meleset untuk istilah yang tidak terdaftar.
 
 ## Menjalankan
 
-**Lewat tampilan web:**
+Antarmukanya cuma satu: halaman web. Nyalakan backend di laptop, lalu buka
+halaman Vercel-nya.
 
 ```bash
-streamlit run app.py
+python mulai.py
 ```
 
-**Lewat terminal:**
-
-```bash
-python run.py --email nama@asuransiastra.com
-python run.py --email nama@asuransiastra.com --folder "D:/laporan"
-python run.py --batalkan          # kembalikan PDF yang telanjur dipindah
-```
-
-**Memeriksa tanpa memproses apa pun:**
-
-```bash
-python cek.py kolom                    # 72 kolom standar beserta perannya
-python cek.py pdf "laporan.pdf"        # isi yang terbaca dari satu PDF
-python cek.py cocok "Nilai Kerugian"   # uji satu nama parameter
-python cek.py audit "laporan.pdf"      # cari data PDF yang tercecer
-```
+Selengkapnya — termasuk cara uji coba tanpa terowongan — ada di bagian
+[Website publik](#website-publik-vercel--backend-di-laptop) di bawah.
 
 ---
 
@@ -89,9 +76,9 @@ Dua lapis, dan bedanya penting:
 | **Baca PDF** | Ada data yang tercecer? | tidak ada | detik per PDF |
 | **PDF → Excel** | Nilainya benar? | Excel isian manual | jam, sekali di awal |
 
-**Lapis 1 — `python cek.py audit`.** Tidak perlu kunci jawaban: PDF-nya sendiri
-yang jadi acuan. Perintah ini menyandingkan tiap baris mentah PDF dengan
-pasangan yang berhasil ditangkap, lalu menandainya:
+**Lapis 1 — audit pembacaan.** Tidak perlu kunci jawaban: PDF-nya sendiri yang
+jadi acuan. Alatnya dulu `cek.py`, yang menyandingkan tiap baris mentah PDF
+dengan pasangan yang berhasil ditangkap, lalu menandainya:
 
 ```
 ok   Policy Number : 15022325000001-000275      D
@@ -102,8 +89,14 @@ ok   Policy Number : 15022325000001-000275      D
 Yang dibaca cuma baris `!!`. Kalau isinya terlihat seperti data klaim, berarti
 ada yang tercecer. Kop surat, alamat, dan nomor izin wajar muncul di situ.
 
-Jalankan setiap kali ada **penerbit baru** — format yang belum pernah dilihat
-adalah tempat pembacaan jebol, bukan berkas ke-20 dari format yang sudah dikenal.
+`cek.py` sudah dihapus bersama antarmuka lama. Kalau dibutuhkan lagi — dan itu
+paling terasa saat ada **penerbit baru**, karena format yang belum pernah
+dilihat adalah tempat pembacaan jebol, bukan berkas ke-20 dari format yang
+sudah dikenal — ambil kembali dari riwayat git:
+
+```bash
+git show 8e87e37:cek.py > cek.py
+```
 
 **Lapis 2 — kunci jawaban.** Isi Excel manual untuk 10–15 DLA dari penerbit
 yang berbeda-beda, jalankan sistem atas PDF yang sama, lalu bandingkan sel per
@@ -119,15 +112,24 @@ mengetahui kolom mana yang sering meleset.
 
 ```
 STANDAR/           file Excel standar (acuan struktur, jangan dihapus)
-INPUT/             taruh PDF di sini
+MEMORY/            profil per perusahaan (JSON, boleh diedit manual)
+src/               kode pemroses
+server.py          backend yang melayani halaman web
+mulai.py           menyalakan server + terowongan
+web/               halaman statis yang di-deploy ke Vercel
+```
+
+`INPUT/` dan `OUTPUT/` di laptop adalah peninggalan jalur lama dan sudah tidak
+ditulis siapa pun. Sejak antarmukanya cuma web, tiap permintaan dikerjakan di
+folder sementara yang isinya berstruktur sama, lalu dibuang:
+
+```
 OUTPUT/
   <Grup>/<Perusahaan>/PDF/                 PDF asli setelah disortir
   <Grup>/<Perusahaan>/<Perusahaan>_YYYYMMDD.xlsx
   _TIDAK_TERDETEKSI/                       PDF yang perusahaannya tidak dikenali
   _LAPORAN_*.txt                           ringkasan tiap proses
-  _catatan_pemindahan.jsonl                catatan agar pemindahan bisa dibatalkan
-MEMORY/            profil per perusahaan (JSON, boleh diedit manual)
-src/               kode
+  _catatan_pemindahan.jsonl                catatan pemindahan
 ```
 
 ---
@@ -146,14 +148,12 @@ Tujuh modul, mengikuti urutan kerjanya:
 | `src/excel.py` | **5.** Membaca struktur file standar, lalu menulis hasil tanpa merusak dropdown |
 | `src/pipeline.py` | Perekat: menjalankan langkah 1–5 secara berurutan |
 
-Ditambah dua berkas tampilan — `src/tampilan.py` (potongan HTML) dan
-`src/styles.css` (warna dan tata letak) — yang hanya dipakai oleh `app.py`.
+Pintu masuknya satu: `server.py` (FastAPI), dinyalakan oleh `mulai.py`.
+Halaman yang memanggilnya ada di `web/`.
 
-Pintu masuknya tiga: `app.py` (web), `run.py` (terminal), `cek.py` (alat
-pemeriksa, tidak ikut jalan saat proses normal).
-
-PDF asli **dipindah**, bukan disalin. Semua pemindahan tercatat, jadi bisa
-dikembalikan dengan `python run.py --batalkan` kalau ada yang nyasar.
+PDF asli **dipindah**, bukan disalin. Tapi karena tiap permintaan dikerjakan di
+folder sementara yang terisolasi, yang berpindah adalah salinan di dalam folder
+itu, dan ikut terhapus bersamanya.
 
 ---
 
@@ -200,8 +200,8 @@ Yang paling menghambat: **tanggal kaki surat masuk kolom S atau kolom C/T.**
 
 ## Website publik (Vercel + backend di laptop)
 
-Selain `app.py` yang dipakai sendiri, ada versi web yang bisa dibagikan ke
-orang lain lewat tautan. Bentuknya dua bagian:
+Antarmukanya berupa halaman web yang bisa dibagikan ke orang lain lewat
+tautan. Bentuknya dua bagian:
 
 ```
 Vercel (halaman, publik)              Laptop ini (pemroses)
@@ -257,7 +257,7 @@ cd web && python -m http.server 3000   # jendela 2
 
 Lalu buka `http://localhost:3000/?api=http://localhost:8000`.
 
-### Yang membedakan versi web dari `app.py`
+### Ruang terisolasi tiap permintaan
 
 Setiap permintaan dari web dikerjakan di **folder sementara yang terisolasi**
 (`ruang_terisolasi()` di `server.py`). `Output/` dan `Memory/` asli tidak
@@ -349,7 +349,8 @@ Tiga hal yang harus disadari, bukan ditutupi:
 1. **Cloudflare bisa melihat isi berkas.** Terowongan mengakhiri TLS di server
    Cloudflare, jadi secara teknis PDF terbaca di sana sebelum sampai ke laptop.
    Kalau ini tidak dapat diterima, jangan pakai terowongan publik — pakai
-   jaringan kantor/VPN, atau jalankan `app.py` (Streamlit) secara lokal saja.
+   jaringan kantor/VPN, atau jalankan backend-nya tanpa terowongan (lihat
+   *Uji coba di laptop sendiri*) supaya berkas tidak pernah keluar dari laptop.
 
 2. **Setiap Excel hasil membawa 12 sheet referensi internal Astra** —
    `CatastropheEvent` (register kejadian internal berikut tanggal dan lokasi),
