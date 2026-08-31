@@ -15,3 +15,9 @@ Pillow>=10.0
 # Pencocokan makna lintas bahasa. Model diunduh sekali saat pertama dipakai,
 # setelah itu jalan offline. Tanpa ini program tetap jalan lewat jalur cadangan.
 sentence-transformers>=3.0
+
+# Backend untuk website publik (server.py + mulai.py). Tidak diperlukan
+# kalau kamu hanya memakai app.py (Streamlit) atau run.py (CLI).
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9

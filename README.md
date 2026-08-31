@@ -195,3 +195,84 @@ Lihat [CONCERNS.md](CONCERNS.md) — 14 poin, masing-masing menunjuk baris confi
 yang perlu diubah begitu jawabannya ada.
 
 Yang paling menghambat: **tanggal kaki surat masuk kolom S atau kolom C/T.**
+
+---
+
+## Website publik (Vercel + backend di laptop)
+
+Selain `app.py` yang dipakai sendiri, ada versi web yang bisa dibagikan ke
+orang lain lewat tautan. Bentuknya dua bagian:
+
+```
+Vercel (halaman, publik)              Laptop ini (pemroses)
+┌──────────────────────┐   HTTPS     ┌────────────────────────┐
+│ web/index.html       │ ──────────► │ server.py (FastAPI)    │
+│ web/app.js           │ terowongan  │   └─ src/pipeline.py   │
+│ web/styles.css       │ ◄────────── │ Standar/ + Memory/     │
+└──────────────────────┘ JSON+.xlsx  └────────────────────────┘
+```
+
+**Kenapa dipisah begini.** Vercel hanya menjalankan halaman statis; ia tidak
+bisa menjalankan Python berat ini — `torch` saja 454 MB sedangkan batas Vercel
+250 MB, Tesseract OCR butuh program sistem yang tidak bisa dipasang di sana,
+dan `Standar/` serta `Memory/` harus tetap di disk. Jadi halamannya di Vercel,
+pemrosesannya tetap di laptop.
+
+**Konsekuensi yang harus disadari:** website hanya hidup selama laptop menyala
+dan `mulai.py` berjalan. Kalau ditutup, pengunjung melihat "Backend sedang
+tidak aktif". Ini bukan bug.
+
+### Menyalakan
+
+```bash
+python mulai.py
+```
+
+Skrip itu menyalakan `server.py`, membuka terowongan, mencetak alamat publik,
+dan menulis alamat itu ke `web/config.js`. Sekali saja pasang terowongannya:
+
+```bash
+winget install --id Cloudflare.cloudflared
+```
+
+Setiap kali alamat terowongan berubah, halaman Vercel perlu tahu alamat baru:
+
+```bash
+git add web/config.js && git commit -m "alamat backend baru" && git push
+```
+
+Vercel otomatis deploy ulang. Untuk uji cepat tanpa deploy, buka halamannya
+dengan `?api=<alamat>` — alamat itu diingat browser.
+
+> Alamat `trycloudflare.com` berganti tiap kali dinyalakan. Kalau ingin alamat
+> tetap, pakai ngrok dengan domain statis (gratis, 1 domain per akun) atau
+> Cloudflare Tunnel bernama dengan domain sendiri.
+
+### Uji coba di laptop sendiri
+
+```bash
+python server.py                       # jendela 1
+cd web && python -m http.server 3000   # jendela 2
+```
+
+Lalu buka `http://localhost:3000/?api=http://localhost:8000`.
+
+### Yang membedakan versi web dari `app.py`
+
+Setiap permintaan dari web dikerjakan di **folder sementara yang terisolasi**
+(`ruang_terisolasi()` di `server.py`). `Output/` dan `Memory/` asli tidak
+pernah disentuh: profil perusahaan disalin masuk supaya deteksi tetap akurat,
+tapi apa pun yang dipelajari dari PDF pengunjung ikut terhapus. Tanpa ini, PDF
+orang asing akan menumpuk di `Output/` dan mencemari profil yang sudah dilatih.
+
+Batas yang dipasang karena backend ini terbuka ke internet: maksimal 10 PDF
+sekali proses, 15 MB per berkas, 50 MB total, hanya `.pdf`, satu proses pada
+satu waktu, dan hasil dihapus otomatis setelah 30 menit. Yang boleh memanggil
+backend dibatasi ke domain `*.vercel.app` dan localhost — atur lewat variabel
+lingkungan `ASAL_DIIZINKAN` kalau pakai domain sendiri.
+
+### Dokumen rahasia
+
+`.gitignore` menahan `Input/`, `Output/`, `Memory/`, `Training and Testing
+Data/`, `Standar/*.xlsx`, dan semua `*.pdf`. Jangan dilonggarkan — repo ini
+pernah tidak sengaja memuat DLA asli bertanda tangan saat masih publik.

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DLA to Excel Report</title>
+<meta name="description" content="Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar, otomatis.">
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="atas">
+  <div class="wadah atas-isi">
+    <img src="logo.png" alt="" class="logo">
+    <div>
+      <h1>DLA to Excel Report</h1>
+      <p class="sub">Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar</p>
+    </div>
+    <div id="lampu" class="lampu lampu-cek"><span class="titik"></span><span id="lampu-teks">Menghubungi…</span></div>
+  </div>
+</header>
+
+<main class="wadah">
+
+  <div id="peringatan-mati" class="kabar kabar-merah tersembunyi">
+    <strong>Backend sedang tidak aktif.</strong>
+    <p>Pemrosesan PDF berjalan di komputer pemilik aplikasi, dan komputer itu
+       sedang mati atau terowongannya belum dinyalakan. Silakan coba lagi nanti.</p>
+  </div>
+
+  <section class="kartu">
+    <p class="langkah-judul"><span class="nomor">1</span> Email Anda</p>
+    <p class="petunjuk">Diisi ke kolom <strong>N — Reported Email Address</strong> di setiap baris Excel.</p>
+    <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
+  </section>
+
+  <section class="kartu">
+    <p class="langkah-judul"><span class="nomor">2</span> Berkas PDF</p>
+    <p class="petunjuk">PDF digital maupun hasil pindaian. Maksimal <span id="maks-berkas">10</span> berkas,
+       <span id="maks-ukuran">15</span> MB per berkas.</p>
+
+    <div id="jatuhkan" class="jatuhkan" tabindex="0" role="button"
+         aria-label="Pilih atau jatuhkan berkas PDF">
+      <div class="jatuhkan-ikon">📄</div>
+      <p class="jatuhkan-utama">Jatuhkan PDF di sini</p>
+      <p class="jatuhkan-sub">atau klik untuk memilih dari komputer</p>
+    </div>
+    <input type="file" id="berkas" accept="application/pdf,.pdf" multiple hidden>
+
+    <ul id="daftar-berkas" class="daftar-berkas"></ul>
+  </section>
+
+  <section class="kartu kartu-jalan">
+    <button id="tombol" disabled>Proses sekarang</button>
+    <p id="tombol-alasan" class="petunjuk tengah">Isi email dan pilih minimal satu PDF.</p>
+    <div id="memuat" class="memuat tersembunyi">
+      <div class="putar"></div>
+      <p id="memuat-teks">Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</p>
+    </div>
+  </section>
+
+  <div id="galat" class="kabar kabar-merah tersembunyi"></div>
+
+  <section id="hasil" class="tersembunyi">
+    <h2>Hasil</h2>
+    <div id="statistik" class="statistik"></div>
+    <div id="blok-catatan"></div>
+    <div id="blok-excel"></div>
+    <div id="blok-tinjau"></div>
+    <div id="blok-lewat"></div>
+  </section>
+
+</main>
+
+<footer class="bawah">
+  <div class="wadah">
+    <p>Berkas yang Anda unggah diproses sementara lalu dihapus otomatis dalam 30 menit.
+       Tidak ada dokumen yang disimpan permanen.</p>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
