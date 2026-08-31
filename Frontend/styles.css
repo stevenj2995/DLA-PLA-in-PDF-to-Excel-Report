@@ -1,184 +1,233 @@
-/* Satu tema saja: header putih di atas, latar biru di bawahnya, kartu putih.
+/* Satu tema: header putih, latar biru, satu panel putih berisi tiga langkah.
    Semua warna berasal dari token di :root -- ubah di sini, seluruh halaman ikut. */
 :root {
-  color-scheme: light;
   --blue: #125DAB;
   --blue-dark: #0E4A87;
+  --blue-soft: #F1F6FC;
   --cyan: #48C7EB;
   --green: #0E9F6E;
   --amber: #C77700;
   --red: #D64545;
 
   --surface: #fff;
-  --line: #DCE6F2;
+  --line: #E1E9F3;
+  --line-strong: #CBD9EA;
   --text: #16263A;
-  --text-soft: #5B7089;
+  --text-soft: #5F748C;
+  --text-faint: #8496AB;
   --on-blue: #fff;
 
-  --radius: 18px;
-  --shadow: 0 20px 46px -24px rgba(4, 26, 52, .55);
+  --radius: 20px;
+  --radius-sm: 12px;
+  --shadow: 0 1px 2px rgba(11, 40, 74, .06), 0 24px 48px -28px rgba(4, 26, 52, .5);
+  --ring: 0 0 0 3px rgba(18, 93, 171, .16);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0 }
 
 body {
-  font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system,
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
                Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
   background-color: #0B4079;
   background-image:
-    radial-gradient(1100px 620px at 88% -8%, rgba(72, 199, 235, .34), transparent 62%),
-    radial-gradient(900px 520px at -8% 108%, rgba(72, 199, 235, .20), transparent 60%),
-    linear-gradient(150deg, #0B4079 0%, #125DAB 52%, #1E7FC0 100%);
+    radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .30), transparent 60%),
+    radial-gradient(900px 560px at -10% 110%, rgba(72, 199, 235, .18), transparent 60%),
+    linear-gradient(158deg, #0B4079 0%, #14589F 48%, #1E7FC0 100%);
   background-attachment: fixed;
   min-height: 100vh;
+  display: flex; flex-direction: column;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
-.container { max-width: 880px; margin: 0 auto; padding: 0 20px }
+.container { max-width: 760px; margin: 0 auto; padding: 0 20px }
 .hidden { display: none !important }
 
 /* ------------------------------------------------------------------ header */
 /* Selebar layar, bukan di dalam .container, supaya logonya benar-benar
    menempel di pojok kiri atas. */
-.site-header { background: var(--surface); border-bottom: 1px solid var(--line) }
-.header-inner { display: flex; align-items: center; gap: 16px; padding: 14px 24px }
-.logo { height: 40px; width: auto; flex-shrink: 0 }
-.site-header h1 {
+.site-header {
+  background: var(--surface);
+  border-bottom: 1px solid rgba(11, 40, 74, .08);
+  box-shadow: 0 1px 12px rgba(4, 26, 52, .12);
+  position: sticky; top: 0; z-index: 10;
+}
+.header-inner { display: flex; align-items: center; gap: 14px; padding: 12px 22px }
+.logo { height: 34px; width: auto; flex-shrink: 0 }
+.brand {
   flex: 1; min-width: 0;
-  font-size: 19px; font-weight: 650; letter-spacing: -.2px; color: var(--text);
+  font-size: 16.5px; font-weight: 650; letter-spacing: -.15px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
-  padding: 6px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
-  background: var(--surface); border: 1px solid var(--line); color: var(--text-soft);
+  padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--surface); border: 1px solid var(--line-strong); color: var(--text-soft);
 }
-.status-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor }
-.status-live { color: var(--green); border-color: #BFE5D5 }
-.status-live .dot { box-shadow: 0 0 0 3px rgba(14, 159, 110, .18) }
-.status-down { color: var(--red); border-color: #F3CFCF }
+.status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor }
+.status-live { color: var(--green); border-color: #B7E3D2; background: #F3FBF8 }
+.status-live .dot { box-shadow: 0 0 0 3px rgba(14, 159, 110, .16) }
+.status-down { color: var(--red); border-color: #F0C9C9; background: #FDF4F4 }
 .status-checking .dot { animation: blink 1s infinite }
 @keyframes blink { 50% { opacity: .25 } }
 
-/* ------------------------------------------------------------------- kartu */
-main { padding: 28px 0 44px }
-.card {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); box-shadow: var(--shadow);
-  padding: 22px; margin-bottom: 18px;
+/* ------------------------------------------------------------------- panel */
+main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
+
+.panel {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 30px 34px;
+  margin-bottom: 18px;
 }
+
+/* Rel bernomor: lingkaran langkah dihubungkan garis vertikal, supaya
+   ketiganya terbaca sebagai satu alur, bukan tiga kotak terpisah. */
+.step { display: grid; grid-template-columns: 30px 1fr; gap: 18px }
+.step + .step { margin-top: 26px }
+.step-rail { position: relative }
+.step-num {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--blue); color: #fff;
+  font-size: 13.5px; font-weight: 700; line-height: 1;
+}
+.step:not(:last-child) .step-rail::after {
+  content: ""; position: absolute; left: 50%; top: 38px; bottom: -26px;
+  width: 2px; transform: translateX(-50%); background: var(--line);
+}
+.step-body { min-width: 0; padding-top: 3px }
 .step-title {
-  display: flex; align-items: center; gap: 10px;
-  font-weight: 650; font-size: 15.5px; margin-bottom: 14px;
+  font-size: 15.5px; font-weight: 650; letter-spacing: -.1px;
+  margin-bottom: 12px;
 }
-.step-number {
-  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
-  background: var(--blue); color: #fff; font-size: 13px; font-weight: 700;
-}
-.hint { font-size: 13px; color: var(--text-soft); margin: 6px 0 14px }
-.hint.center { text-align: center; margin: 10px 0 0 }
-.code-hint { margin: 14px 0 8px }
+.field-note { font-size: 12.5px; color: var(--text-faint); margin-top: 8px }
 
 input[type=email],
 input[type=password] {
-  width: 100%; padding: 11px 13px; font: inherit; font-size: 14px;
-  border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text);
+  width: 100%; padding: 12px 14px; font: inherit; font-size: 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: #fff; color: var(--text);
+  transition: border-color .15s, box-shadow .15s;
 }
+input::placeholder { color: var(--text-faint) }
 input[type=email]:focus,
-input[type=password]:focus {
-  outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(18, 93, 171, .14);
-}
+input[type=password]:focus { outline: none; border-color: var(--blue); box-shadow: var(--ring) }
+#code-row input { margin-top: 0 }
 
 /* -------------------------------------------------------------- area unggah */
 .upload-note {
   font-size: 12.5px; line-height: 1.5; margin-bottom: 12px;
-  padding: 9px 12px; border-radius: 10px;
-  background: #F0F6FD; border: 1px solid var(--line); color: var(--blue-dark);
+  padding: 10px 13px; border-radius: var(--radius-sm);
+  background: var(--blue-soft); color: var(--blue-dark);
+  border: 1px solid #DCE8F7;
 }
 
 .dropzone {
-  border: 2px dashed var(--line); border-radius: 14px; padding: 26px 18px;
-  text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  border: 1.5px dashed var(--line-strong); border-radius: var(--radius-sm);
+  padding: 20px 18px; cursor: pointer; text-align: left;
+  background: #FBFDFF;
+  transition: border-color .15s, background .15s;
 }
-.dropzone:hover, .dropzone:focus-visible { border-color: var(--cyan); background: #F2F9FD; outline: none }
-.dropzone.is-over { border-color: var(--blue); background: #E8F1FB }
-.dropzone-icon { font-size: 32px; line-height: 1; margin-bottom: 8px }
-.dropzone-main { font-weight: 600; font-size: 14.5px }
-.dropzone-sub { font-size: 12.5px; color: var(--text-soft); margin-top: 2px }
+.dropzone:hover, .dropzone:focus-visible {
+  border-color: var(--cyan); background: var(--blue-soft); outline: none;
+}
+.dropzone.is-over { border-color: var(--blue); background: #E6F0FB }
+.dropzone-icon { font-size: 26px; line-height: 1; flex-shrink: 0 }
+.dropzone-text { display: flex; flex-direction: column }
+.dropzone-main { font-weight: 620; font-size: 14px }
+.dropzone-sub { font-size: 12.5px; color: var(--text-faint) }
 
-.file-list { list-style: none; margin-top: 14px }
+.file-list { list-style: none; margin-top: 12px }
 .file-list li {
-  display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin-bottom: 7px;
-  background: #F7FAFD; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; margin-bottom: 6px; font-size: 13.5px;
+  background: #F7FAFD; border: 1px solid var(--line); border-radius: 10px;
 }
 .file-list .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.file-list .file-size { color: var(--text-soft); font-size: 12.5px; flex-shrink: 0 }
+.file-list .file-size { color: var(--text-faint); font-size: 12.5px; flex-shrink: 0 }
 .remove {
-  border: none; background: none; cursor: pointer; font-size: 19px; line-height: 1;
-  color: var(--text-soft); padding: 0 2px;
+  border: none; background: none; cursor: pointer; font-size: 18px; line-height: 1;
+  color: var(--text-faint); padding: 0 2px;
 }
 .remove:hover { color: var(--red) }
 
 /* ------------------------------------------------------------------ tombol */
-.card-action { text-align: center }
+.action-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap }
+.action-row .field-note { margin-top: 0 }
+
 #submit {
-  border: none; cursor: pointer; font: inherit; font-size: 15px; font-weight: 650;
-  padding: 13px 30px; border-radius: 11px; background: var(--blue); color: #fff;
+  border: none; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 650;
+  padding: 12px 26px; border-radius: var(--radius-sm);
+  background: var(--blue); color: #fff; flex-shrink: 0;
+  box-shadow: 0 6px 16px -8px rgba(18, 93, 171, .8);
+  transition: background .15s, transform .1s, box-shadow .15s;
 }
 #submit:hover:not(:disabled) { background: var(--blue-dark) }
 #submit:active:not(:disabled) { transform: translateY(1px) }
-#submit:disabled { background: #A9B8CA; cursor: not-allowed }
+#submit:disabled { background: #B6C4D4; box-shadow: none; cursor: not-allowed }
 
 .btn-danger {
   border: none; cursor: pointer; font: inherit; font-size: 14px; font-weight: 650;
-  padding: 12px 22px; border-radius: 11px; background: var(--red); color: #fff;
+  padding: 11px 20px; border-radius: var(--radius-sm); background: var(--red); color: #fff;
 }
 .btn-danger:hover:not(:disabled) { background: #B93838 }
 .btn-danger:disabled { background: #C9A5A5; cursor: not-allowed }
 
-.loading { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 10px }
+.loading { display: flex; align-items: center; gap: 11px; margin-top: 16px; font-size: 13px;
+           color: var(--text-soft) }
 .spinner {
-  width: 26px; height: 26px; border-radius: 50%;
-  border: 3px solid var(--line); border-top-color: var(--blue); animation: spin .8s linear infinite;
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  border: 2.5px solid var(--line); border-top-color: var(--blue);
+  animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg) } }
-.loading p { font-size: 13px; color: var(--text-soft) }
 
 /* ------------------------------------------------------------------- kabar */
 .notice {
-  padding: 14px 16px; border-radius: var(--radius); margin-bottom: 16px; font-size: 13.5px;
+  padding: 14px 16px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13.5px;
 }
-.notice p { margin-top: 4px }
+.notice p { margin-top: 5px }
 .notice ul { margin: 8px 0 8px 20px }
-.notice-red { background: #FDF2F2; border: 1px solid #F3CFCF; color: #8A2B2B }
-.notice-amber { background: #FFF9EC; border: 1px solid #F2DFB4; color: #7A4B00 }
-.notice-blue { background: #F0F6FD; border: 1px solid var(--line); color: var(--blue-dark) }
-.notice-green { background: #EFFAF5; border: 1px solid #BFE5D5; color: #0A6B4A }
-.cleanup-warning { margin: 12px 0 16px }
-.card-cleanup { border-top: 3px solid var(--amber) }
+.notice-red { background: #FDF4F4; border: 1px solid #F0C9C9; color: #8A2B2B }
+.notice-amber { background: #FFF9EC; border: 1px solid #F0DCAF; color: #7A4B00 }
+.notice-blue { background: var(--blue-soft); border: 1px solid #DCE8F7; color: var(--blue-dark) }
+.notice-green { background: #F3FBF8; border: 1px solid #B7E3D2; color: #0A6B4A }
 
 /* ------------------------------------------------------------------- hasil */
-#results h2 { font-size: 19px; font-weight: 650; margin: 26px 0 14px; color: var(--on-blue) }
-#results h3 { font-size: 14.5px; font-weight: 650; margin: 0 0 12px; color: var(--on-blue) }
-
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px }
-.stat {
-  background: var(--surface); border: 1px solid var(--line); border-left-width: 4px;
-  border-radius: 12px; padding: 13px 15px; box-shadow: var(--shadow);
+.section-heading {
+  font-size: 17px; font-weight: 650; color: var(--on-blue);
+  margin: 30px 0 14px; letter-spacing: -.1px;
 }
-.stat .value { font-size: 24px; font-weight: 700; line-height: 1.15 }
-.stat .label { font-size: 12px; color: var(--text-soft) }
+/* judul blok hasil berdiri di atas latar biru, jadi putih; judul di dalam
+   panel putih tetap gelap -- dipisah supaya tidak saling menimpa */
+#block-excel h3, #block-review h3, #block-skipped h3 {
+  font-size: 14px; font-weight: 650; color: var(--on-blue); margin: 22px 0 10px;
+}
+.panel-title { font-size: 15.5px; font-weight: 650; margin-bottom: 14px; color: var(--text) }
+.panel-cleanup { border-top: 3px solid var(--amber) }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px }
+.stat {
+  background: var(--surface); border-radius: var(--radius-sm);
+  border-left: 4px solid var(--line-strong);
+  padding: 13px 15px; box-shadow: var(--shadow);
+}
+.stat .value { font-size: 23px; font-weight: 700; line-height: 1.15 }
+.stat .label { font-size: 11.5px; color: var(--text-faint) }
 
 .excel-row {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-  padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow);
+  background: var(--surface); border-radius: var(--radius-sm);
+  padding: 14px 16px; margin-bottom: 9px; box-shadow: var(--shadow);
 }
-.excel-info { flex: 1; min-width: 220px }
+.excel-info { flex: 1; min-width: 210px }
 .excel-company { font-weight: 650; font-size: 14px }
-.excel-detail { font-size: 12.5px; color: var(--text-soft); margin-top: 2px }
+.excel-detail { font-size: 12.5px; color: var(--text-faint); margin-top: 2px }
 .download {
   flex-shrink: 0; text-decoration: none; font-size: 13.5px; font-weight: 650;
   padding: 9px 16px; border-radius: 10px; background: var(--green); color: #fff;
@@ -187,8 +236,9 @@ input[type=password]:focus {
 .download-off { background: #B9C6D3; cursor: default; pointer-events: none }
 
 #results details {
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-  padding: 11px 15px; margin-bottom: 9px; font-size: 13.5px; color: var(--text);
+  background: var(--surface); border-radius: var(--radius-sm);
+  padding: 12px 16px; margin-bottom: 8px; font-size: 13.5px;
+  color: var(--text); box-shadow: var(--shadow);
 }
 #results summary { cursor: pointer; font-weight: 600 }
 #results details .details-body { margin-top: 9px; font-size: 13px; color: var(--text-soft) }
@@ -196,7 +246,14 @@ input[type=password]:focus {
 
 /* -------------------------------------------------------------- layar sempit */
 @media (max-width: 620px) {
-  .header-inner { padding: 12px 16px; gap: 12px }
-  .site-header h1 { font-size: 17px }
+  .header-inner { padding: 10px 14px; gap: 10px }
+  .brand { font-size: 15px }
+  .panel { padding: 22px 18px; border-radius: 16px }
+  .step { grid-template-columns: 26px 1fr; gap: 13px }
+  .step-num { width: 26px; height: 26px; font-size: 12.5px }
+  .step:not(:last-child) .step-rail::after { top: 33px }
+  .dropzone { flex-direction: column; text-align: center; gap: 8px; padding: 22px 14px }
+  .action-row { flex-direction: column; align-items: stretch }
+  #submit { width: 100% }
   .stats { grid-template-columns: repeat(2, 1fr) }
 }

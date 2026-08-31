@@ -13,7 +13,7 @@
 <header class="site-header">
   <div class="header-inner">
     <img src="logo.png" alt="Asuransi Astra" class="logo">
-    <h1>DLA to Excel Report</h1>
+    <span class="brand">DLA to Excel Report</span>
     <div id="status" class="status-pill status-checking">
       <span class="dot"></span><span id="status-text">Menghubungi…</span>
     </div>
@@ -28,58 +28,75 @@
        sedang mati atau terowongannya belum dinyalakan. Silakan coba lagi nanti.</p>
   </div>
 
-  <section class="card">
-    <p class="step-title"><span class="step-number">1</span> Email Anda</p>
-    <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
+  <section class="panel">
 
-    <div id="code-row" class="hidden">
-      <p class="hint code-hint">Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
-      <input type="password" id="code" placeholder="Kode akses" autocomplete="off">
+    <div class="step">
+      <div class="step-rail"><span class="step-num">1</span></div>
+      <div class="step-body">
+        <h2 class="step-title">Email Anda</h2>
+        <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
+        <div id="code-row" class="hidden">
+          <input type="password" id="code" placeholder="Kode akses" autocomplete="off">
+          <p class="field-note">Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
+        </div>
+      </div>
     </div>
-  </section>
 
-  <section class="card">
-    <p class="step-title"><span class="step-number">2</span> Berkas PDF</p>
+    <div class="step">
+      <div class="step-rail"><span class="step-num">2</span></div>
+      <div class="step-body">
+        <h2 class="step-title">Berkas PDF</h2>
 
-    <p class="upload-note">
-      PDF Anda dihapus begitu Excel-nya jadi. Excel hasilnya hilang otomatis
-      setelah <span class="session-minutes">15</span> menit.
-    </p>
+        <p class="upload-note">
+          PDF Anda dihapus begitu Excel-nya jadi. Excel hasilnya hilang otomatis
+          setelah <span class="session-minutes">15</span> menit.
+        </p>
 
-    <div id="dropzone" class="dropzone" tabindex="0" role="button"
-         aria-label="Pilih atau jatuhkan berkas PDF">
-      <div class="dropzone-icon">📄</div>
-      <p class="dropzone-main">Jatuhkan PDF di sini</p>
-      <p class="dropzone-sub">atau klik untuk memilih dari komputer</p>
+        <div id="dropzone" class="dropzone" tabindex="0" role="button"
+             aria-label="Pilih atau jatuhkan berkas PDF">
+          <span class="dropzone-icon">📄</span>
+          <span class="dropzone-text">
+            <span class="dropzone-main">Jatuhkan PDF di sini</span>
+            <span class="dropzone-sub">atau klik untuk memilih dari komputer</span>
+          </span>
+        </div>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" multiple hidden>
+
+        <ul id="file-list" class="file-list"></ul>
+      </div>
     </div>
-    <input type="file" id="file-input" accept="application/pdf,.pdf" multiple hidden>
 
-    <ul id="file-list" class="file-list"></ul>
-  </section>
-
-  <section class="card card-action">
-    <button id="submit" disabled>Proses sekarang</button>
-    <p id="submit-hint" class="hint center">Isi email dan pilih minimal satu PDF.</p>
-    <div id="loading" class="loading hidden">
-      <div class="spinner"></div>
-      <p>Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</p>
+    <div class="step">
+      <div class="step-rail"><span class="step-num">3</span></div>
+      <div class="step-body">
+        <h2 class="step-title">Proses</h2>
+        <div class="action-row">
+          <button id="submit" disabled>Proses sekarang</button>
+          <p id="submit-hint" class="field-note">Isi email dan pilih minimal satu PDF.</p>
+        </div>
+        <div id="loading" class="loading hidden">
+          <span class="spinner"></span>
+          <span>Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</span>
+        </div>
+      </div>
     </div>
+
   </section>
 
   <div id="error" class="notice notice-red hidden"></div>
 
   <section id="results" class="hidden">
-    <h2>Hasil</h2>
+    <h2 class="section-heading">Hasil</h2>
     <div id="stats" class="stats"></div>
     <div id="block-notes"></div>
     <div id="block-excel"></div>
     <div id="block-review"></div>
     <div id="block-skipped"></div>
 
-    <div class="card card-cleanup">
-      <p class="step-title"><span class="step-number">3</span> Selesai &amp; hapus data</p>
+    <div class="panel panel-cleanup">
+      <h3 class="panel-title">Selesai &amp; hapus data</h3>
 
-      <div class="notice notice-amber cleanup-warning">
+      <div class="notice notice-amber">
         <strong>Data Anda masih tersimpan sementara di server.</strong>
         <p>Unduh Excel yang Anda perlukan lebih dulu, lalu tekan tombol di bawah.
            Yang akan dihapus saat itu juga:</p>
