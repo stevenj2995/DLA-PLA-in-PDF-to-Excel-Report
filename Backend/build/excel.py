@@ -1,15 +1,16 @@
 
 from __future__ import annotations
 
+import os
 import re
-import shutil
+import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
 import openpyxl
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import column_index_from_string, get_column_letter
 
 from .. import settings
 
@@ -73,6 +74,8 @@ def _role_of(letter: str) -> str:
         return "formula"
     if letter in settings.COLUMNS_FROM_PDF:
         return "from_pdf"
+    if letter == settings.LETTER_DATE_COLUMN:
+        return "letter_date"
     if letter in settings.MONITORING_COLUMNS:
         return "monitoring"
     if letter in settings.FEE_COLUMNS:
@@ -107,7 +110,7 @@ def load_schema(template_path: str | None = None) -> Schema:
         columns.append(Column(
             index=c, letter=letter, group=g,
             header=str(h).strip() if h is not None else None,
-            flag=str(f).strip() if f is not None else None,
+            flag=(str(f).strip() or None) if f is not None else None,
             role=_role_of(letter), number_format=fmt,
         ))
     wb.close()
@@ -118,6 +121,11 @@ def load_schema(template_path: str | None = None) -> Schema:
 RE_EXTLST = re.compile(r"<extLst>.*?</extLst>", re.S)
 RE_XR_UID = re.compile(r'\s+xr:uid="[^"]*"')
 RE_X14_DV = re.compile(r"<x14:dataValidation\b")
+RE_X14_F = re.compile(r"<xm:f>(.*?)</xm:f>", re.S)
+RE_SQREF = re.compile(r"<xm:sqref>(.*?)</xm:sqref>", re.S)
+RE_RANGE = re.compile(r"\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?")
+RE_LIST_SOURCE = re.compile(
+    r"^'?([^'!]+)'?!\$?([A-Z]+)\$?(\d+):\$?[A-Z]+\$?(\d+)$")
 
 
 @dataclass
@@ -145,18 +153,163 @@ def _main_sheet_part(zf: zipfile.ZipFile) -> str:
     return target if target.startswith("xl/") else f"xl/{target}"
 
 
+# one (list source, sqref) pair per x14 validation
+def _x14_entries(block: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for chunk in block.split("</x14:dataValidation>"):
+        source = RE_X14_F.search(chunk)
+        sqref = RE_SQREF.search(chunk)
+        if source and sqref:
+            out.append((source.group(1), sqref.group(1)))
+    return out
+
+
+def _columns_of(sqref: str) -> list[str]:
+    out: list[str] = []
+    for start, _r1, end, _r2 in RE_RANGE.findall(sqref):
+        for letter in (start, end or start):
+            if letter and letter not in out:
+                out.append(letter)
+    return out
+
+
+def _last_row(block: str) -> int:
+    rows: list[int] = []
+    for sqref in RE_SQREF.findall(block):
+        for _start, r1, _end, r2 in RE_RANGE.findall(sqref):
+            rows.append(int(r1))
+            if r2:
+                rows.append(int(r2))
+    return max(rows) if rows else 1048576
+
+
+# Editing has eaten holes in the template's dropdown ranges (Cause of Loss, for
+# one, covers AB5:AB44 AB79:AB81 AB83:AB95 ... so the rows in between get no
+# dropdown at all). Each range is widened back to the whole column -- but only
+# when no column is claimed by two different lists, because overlapping ranges
+# make Excel reject the file.
+def _widen_sqref(block: str) -> str:
+    entries = _x14_entries(block)
+    if not entries:
+        return block
+    claimed: set[str] = set()
+    for _source, sqref in entries:
+        columns = _columns_of(sqref)
+        if claimed.intersection(columns):
+            return block  # two lists share a column -- leave the ranges alone
+        claimed.update(columns)
+
+    first, last = settings.FIRST_DATA_ROW, _last_row(block)
+
+    def widen(m: "re.Match[str]") -> str:
+        columns = _columns_of(m.group(1))
+        if not columns:
+            return m.group(0)
+        return "<xm:sqref>%s</xm:sqref>" % " ".join(
+            "%s%d:%s%d" % (c, first, c, last) for c in columns)
+
+    return RE_SQREF.sub(widen, block)
+
+
 def _read_extlst(template_path: Path, part: str) -> str | None:
     with zipfile.ZipFile(template_path) as z:
         xml = z.read(part).decode("utf-8")
     m = RE_EXTLST.search(xml)
     if not m:
         return None
-    return RE_XR_UID.sub("", m.group(0))
+    return _widen_sqref(RE_XR_UID.sub("", m.group(0)))
+
+
+_TYPOGRAPHIC = {
+    "\u2013": "-", "\u2014": "-", "\u2212": "-",
+    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+    "\u00a0": " ",
+}
+
+
+# the master lists are typed with en dashes and curly quotes, text lifted out of
+# a PDF almost never is, so both sides are flattened before being compared
+def canonical_key(value) -> str:
+    s = unicodedata.normalize("NFKC", str(value))
+    for odd, plain in _TYPOGRAPHIC.items():
+        s = s.replace(odd, plain)
+    return " ".join(s.split()).casefold()
+
+
+@lru_cache(maxsize=4)
+def dropdown_values(template_path: str) -> dict[str, dict[str, str]]:
+    """column letter -> {flattened value: the master list's own spelling}"""
+    path = Path(template_path)
+    with zipfile.ZipFile(path) as z:
+        block = _read_extlst(path, _main_sheet_part(z))
+    if not block:
+        return {}
+
+    wb = openpyxl.load_workbook(path)
+    try:
+        out: dict[str, dict[str, str]] = {}
+        for source, sqref in _x14_entries(block):
+            m = RE_LIST_SOURCE.match(source.strip())
+            if not m or m.group(1) not in wb.sheetnames:
+                continue
+            sheet = wb[m.group(1)]
+            column = column_index_from_string(m.group(2))
+            allowed: dict[str, str] = {}
+            for r in range(int(m.group(3)), int(m.group(4)) + 1):
+                v = sheet.cell(r, column).value
+                if v not in (None, ""):
+                    allowed.setdefault(canonical_key(v), str(v))
+            for letter in _columns_of(sqref):
+                out[letter] = allowed
+        return out
+    finally:
+        wb.close()
+
+
+RE_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _words(key: str) -> set[str]:
+    return set(RE_WORD.findall(key))
+
+
+# Beyond an exact hit this allows exactly one widening: every word of the value
+# occurs in one, and only one, list entry. That turns 'Collision' into
+# 'Collision/Contact' and 'Mechanical - Breakdown' into 'Machinery/Mechanical
+# Breakdown'. Ordinary fuzzy scoring was tried first and is not safe here -- it
+# rates '31 May 2024 - 31 May 2025' an 85 against 'AOG - Act of God'.
+def resolve_dropdown(allowed: dict[str, str], value) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    key = canonical_key(value)
+    if key in allowed:
+        return allowed[key]
+    words = _words(key)
+    if not words:
+        return None
+    hits = {v for k, v in allowed.items() if words <= _words(k)}
+    return hits.pop() if len(hits) == 1 else None
+
+
+def _fit_dropdown(allowed: dict[str, str], value, column: Column, row: int,
+                  corrected: list[str], invalid: list[str]):
+    if not isinstance(value, str) or value.startswith("N/A"):
+        return value
+    exact = resolve_dropdown(allowed, value)
+    if exact is None:
+        invalid.append("%s%d (%s): '%s' tidak ada di daftar pilihan"
+                       % (column.letter, row, column.clean_name, value))
+        return value
+    if exact != value:
+        corrected.append("%s%d (%s): '%s' -> '%s'"
+                         % (column.letter, row, column.clean_name, value, exact))
+    return exact
 
 
 def _patch_extlst(source: Path, destination: Path, part: str, block: str) -> None:
-    with zipfile.ZipFile(source) as zin, \
-         zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as zout:
+    with zipfile.ZipFile(settings.long_path(source)) as zin, \
+         zipfile.ZipFile(settings.long_path(destination), "w",
+                         zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == part:
@@ -166,7 +319,7 @@ def _patch_extlst(source: Path, destination: Path, part: str, block: str) -> Non
             zout.writestr(item, data)
 
 def count_dropdowns(path: Path) -> int:
-    with zipfile.ZipFile(path) as z:
+    with zipfile.ZipFile(settings.long_path(path)) as z:
         xml = z.read(_main_sheet_part(z)).decode("utf-8", "ignore")
     return len(RE_X14_DV.findall(xml))
 
@@ -183,12 +336,12 @@ def write_rows(
     template_path = Path(template_path or settings.template_file())
     schema = schema or load_schema(str(template_path))
     destination = Path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    os.makedirs(settings.long_path(destination.parent), exist_ok=True)
 
     with zipfile.ZipFile(template_path) as z:
-        part = _main_sheet_part(z)
-    block = _read_extlst(template_path, part)
+        block = _read_extlst(template_path, _main_sheet_part(z))
     dropdowns_before = count_dropdowns(template_path)
+    lists = dropdown_values(str(template_path))
 
     wb = openpyxl.load_workbook(template_path)
     ws = wb[settings.MAIN_SHEET]
@@ -202,6 +355,9 @@ def write_rows(
     constants = dict(settings.CONSTANT_COLUMNS)
     constants[settings.OPERATOR_EMAIL_COLUMN] = operator_email
 
+    corrected: list[str] = []
+    invalid: list[str] = []
+
     for i, b in enumerate(rows):
         r = settings.FIRST_DATA_ROW + i
         for k in schema:
@@ -209,28 +365,62 @@ def write_rows(
             cell.number_format = fmt.get(k.letter, "@")
 
             if k.letter == settings.ROW_NUMBER_COLUMN:
-                cell.value = str(start_number + i)
-            elif k.letter in constants and k.letter not in b.values:
-                v = constants[k.letter]
-                if v is not None:
-                    cell.value = v
+                value = str(start_number + i)
+            elif k.letter in constants:
+                # these columns hold the same thing on every row, whatever a
+                # document happens to say
+                value = constants[k.letter]
             elif k.letter in settings.FORMULA_COLUMNS:
-                cell.value = _formula(k.letter, r, b)
-            elif k.letter in b.values:
-                v = b.values[k.letter]
-                cell.value = None if v is None or v == "" else v
+                value = _formula(k.letter, r, b)
+            elif k.letter in b.values and k.role != "empty":
+                # a column the standard says to leave blank stays blank even if
+                # something upstream found a value for it
+                value = b.values[k.letter]
+                value = None if value == "" else value
+            else:
+                value = None
 
-    wb.save(destination)
-    wb.close()
+            if value is not None and k.letter in lists:
+                value = _fit_dropdown(lists[k.letter], value, k, r, corrected, invalid)
+            cell.value = value
+
+    # Columns the template marks mandatory but that are deliberately left for
+    # someone to type in (its own cell comments say "diisi manual"), plus the
+    # fee and monitoring blocks, are not worth reporting -- they are empty by
+    # design on every run. What is worth reporting is a column meant to be
+    # filled that came out blank anyway.
+    mandatory_empty = [
+        "%s (%s)" % (k.letter, k.clean_name) for k in schema
+        if (k.flag or "").lower() == "mandatory"
+        and k.role not in ("empty", "fee", "monitoring")
+        and k.letter not in settings.DEFERRED_COLUMNS
+        and all(ws.cell(settings.FIRST_DATA_ROW + i, k.index).value in (None, "")
+                for i in range(len(rows)))
+    ] if rows else []
+
+    try:
+        wb.save(settings.long_path(destination))
+    except PermissionError as e:
+        raise PermissionError(
+            "Tidak bisa menulis %s - file itu sedang dibuka di Excel. "
+            "Tutup dulu filenya, lalu jalankan ulang." % destination.name) from e
+    finally:
+        wb.close()
 
     dropdowns_after = count_dropdowns(destination)
     if block and dropdowns_after < dropdowns_before:
+        # openpyxl numbers the sheet parts its own way, so the part to patch is
+        # resolved from the saved file rather than from the template
+        with zipfile.ZipFile(settings.long_path(destination)) as z:
+            part = _main_sheet_part(z)
         temp_path = destination.with_suffix(".tmp.xlsx")
-        shutil.move(str(destination), str(temp_path))
         try:
-            _patch_extlst(temp_path, destination, part, block)
+            _patch_extlst(destination, temp_path, part, block)
+            # swap only once the patch is complete
+            os.replace(settings.long_path(temp_path), settings.long_path(destination))
         finally:
-            temp_path.unlink(missing_ok=True)
+            if os.path.exists(settings.long_path(temp_path)):
+                os.remove(settings.long_path(temp_path))
         dropdowns_after = count_dropdowns(destination)
 
     return {
@@ -239,12 +429,11 @@ def write_rows(
         "dropdowns_before": dropdowns_before,
         "dropdowns_after": dropdowns_after,
         "dropdowns_intact": dropdowns_after == dropdowns_before,
+        "corrected": corrected,
+        "invalid": invalid,
+        "mandatory_empty": mandatory_empty,
     }
 
 
 def _formula(letter: str, r: int, b: Row) -> str | None:
-    pattern = settings.FORMULA_COLUMNS[letter]
-    if letter == "AR":
-        share = b.values.get("_aab_share")
-        return pattern.format(r=r, share=share) if share else None
-    return pattern.format(r=r)
+    return settings.FORMULA_COLUMNS[letter].format(r=r)

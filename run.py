@@ -17,27 +17,17 @@ WEB_CONFIG_FILE = Path(__file__).parent / "Frontend" / "config.js"
 def check_setup() -> bool:
     ok = True
     try:
-        print(f"  [OK]   Template standar : {settings.template_file().name}")
+        print(f"Template standar : {settings.template_file().name}")
     except FileNotFoundError:
-        print(f"  [GAGAL] Tidak ada file .xlsx di folder {settings.TEMPLATE_DIR}")
+        print(f"Tidak ada file excel di folder! {settings.TEMPLATE_DIR}")
         ok = False
 
     from Backend.extract.pdf_reader import ocr_available
     if ocr_available():
-        print("  [OK]   OCR (Tesseract)   : aktif")
+        print("Status OCR: AKTIF")
     else:
-        print("  [!]    OCR (Tesseract)   : tidak aktif -- PDF hasil pindaian "
-              "tidak akan terbaca")
+        print("Status OCR: TIDAK AKTIF")
 
-    import os
-    if os.environ.get("ACCESS_CODE", "").strip():
-        print("  [OK]   Kode akses        : aktif -- hanya yang tahu kode bisa "
-              "mengunggah")
-    else:
-        print("  [!]    Kode akses        : TIDAK dipasang -- siapa pun yang "
-              "punya tautannya bisa")
-        print("                             mengunggah. Pasang dengan: "
-              "set ACCESS_CODE=kode-anda")
     return ok
 
 
@@ -50,7 +40,6 @@ def start_server() -> subprocess.Popen:
 
 
 def start_tunnel(exe: str) -> tuple[subprocess.Popen, str | None]:
-    """Start cloudflared and capture the public URL it prints."""
     p = subprocess.Popen(
         [exe, "tunnel", "--url", f"http://localhost:{PORT}"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -75,12 +64,10 @@ def start_tunnel(exe: str) -> tuple[subprocess.Popen, str | None]:
 
 
 def update_web_config(url: str) -> bool:
-    """Write the tunnel URL into Frontend/config.js, ready to commit and push."""
     if not WEB_CONFIG_FILE.exists():
         return False
     content = WEB_CONFIG_FILE.read_text(encoding="utf-8")
-    updated = re.sub(r'window\.BACKEND_URL\s*=\s*"[^"]*";',
-                  f'window.BACKEND_URL = "{url}";', content)
+    updated = re.sub(r'window\.BACKEND_URL\s*=\s*"[^"]*";', f'window.BACKEND_URL = "{url}";', content)
     if updated == content:
         return False
     WEB_CONFIG_FILE.write_text(updated, encoding="utf-8")
@@ -88,39 +75,33 @@ def update_web_config(url: str) -> bool:
 
 
 def main() -> int:
-    print("\n=== DLA to Excel Report -- penyala backend ===\n")
-    print("Memeriksa persiapan:")
+    print("\nDLA/PLA to Excel Report\n")
+    print("Checking:")
     if not check_setup():
-        print("\nAda yang belum siap. Perbaiki dulu, lalu jalankan ulang.")
+        print("\nAda yang belum siap.")
         return 1
 
-    print("\nMenyalakan server...")
+    print("\nStarting server...")
     server = start_server()
     time.sleep(3)
     if server.poll() is not None:
-        print("Server gagal menyala. Coba jalankan 'python server.py' untuk "
-              "melihat pesan errornya.")
+        print("Server gagal menyala.")
         return 1
-    print(f"  Server jalan di http://localhost:{PORT}")
+    print(f"Server online at: http://localhost:{PORT}")
 
     exe = shutil.which("cloudflared")
     tunnel = None
     if not exe:
         print("\n--------------------------------------------------------------")
-        print(" cloudflared belum terpasang, jadi backend ini baru bisa")
-        print(" dihubungi dari laptop ini saja. Untuk membukanya ke internet:")
+        print("Cloudflared belum terpasang")
+        print("winget install --id Cloudflare.cloudflared")
         print("")
-        print("   winget install --id Cloudflare.cloudflared")
-        print("")
-        print(" lalu jalankan ulang skrip ini.")
         print("--------------------------------------------------------------")
-        print("\n Sementara itu kamu tetap bisa menguji halaman webnya secara")
-        print(" lokal (lihat README bagian 'Uji coba di laptop sendiri').")
     else:
-        print("\nMembuka terowongan ke internet...")
+        print("\nOpening tunnel to the internet...")
         tunnel, url = start_tunnel(exe)
         if not url:
-            print("  Terowongan gagal memberi URL. Cek koneksi internet.")
+            print("Failed to open tunnel. Check your internet connection!")
         else:
             written = update_web_config(url)
             print("\n==============================================================")
@@ -128,21 +109,14 @@ def main() -> int:
             print(f"   {url}")
             print("")
             if written:
-                print(" Frontend/config.js sudah otomatis diperbarui.")
-                print(" Supaya website Vercel memakai alamat ini, jalankan:")
-                print("")
-                print('   git add Frontend/config.js && git commit -m "alamat backend baru"')
-                print("   git push")
-                print("")
-            print(" Atau tanpa deploy ulang, buka halamanmu dengan tambahan:")
-            print(f"   ?api={url}")
+                print(" Frontend/config.js updated automatically.")
             print("==============================================================")
 
-    print("\nBackend aktif. Tekan Ctrl+C untuk mematikan.\n")
+    print("\nBackend is ACTIVE. Ctrl+C to TURN OFF.\n")
     try:
         server.wait()
     except KeyboardInterrupt:
-        print("\nMematikan...")
+        print("\nTurning off backend...")
     finally:
         for p in (tunnel, server):
             if p and p.poll() is None:

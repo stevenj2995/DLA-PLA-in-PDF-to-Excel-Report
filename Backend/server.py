@@ -201,6 +201,9 @@ async def process(email: str = Form(...), files: list[UploadFile] = File(...),
                     "dropdowns_intact": e["dropdowns_intact"],
                     "dropdowns_after": e["dropdowns_after"],
                     "dropdowns_before": e["dropdowns_before"],
+                    "corrected": e.get("corrected", []),
+                    "invalid": e.get("invalid", []),
+                    "mandatory_empty": e.get("mandatory_empty", []),
                 })
 
             # workspace is kept until expiry so the Excel stays downloadable

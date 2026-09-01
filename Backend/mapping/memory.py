@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from dataclasses import asdict, dataclass, field
@@ -20,20 +21,21 @@ def _log_move(entry: dict) -> None:
 
 # add a number when the name is taken, so nothing gets overwritten
 def _free_name(destination: Path) -> Path:
-    if not destination.exists():
+    taken = lambda p: os.path.exists(settings.long_path(p))
+    if not taken(destination):
         return destination
     stem, suffix = destination.stem, destination.suffix
     for i in range(2, 1000):
         candidate = destination.with_name(f"{stem} ({i}){suffix}")
-        if not candidate.exists():
+        if not taken(candidate):
             return candidate
     return destination.with_name(f"{stem} ({datetime.now():%H%M%S}){suffix}")
 
 
 def move_pdf(pdf: Path, target_folder: Path, *, reason: str = "") -> Path:
-    target_folder.mkdir(parents=True, exist_ok=True)
+    os.makedirs(settings.long_path(target_folder), exist_ok=True)
     destination = _free_name(target_folder / pdf.name)
-    shutil.move(str(pdf), str(destination))
+    shutil.move(settings.long_path(pdf), settings.long_path(destination))
     _log_move({
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "from": str(pdf),
@@ -48,7 +50,7 @@ def company_folder(group: str, entitas: str) -> Path:
 
 
 def undetected_folder() -> Path:
-    return settings.OUTPUT_DIR / settings.FOLDER_TIDAK_TERDETEKSI
+    return settings.OUTPUT_DIR / settings.UNDETECTED_FOLDER
 
 
 def list_pdfs(folder: Path) -> list[Path]:

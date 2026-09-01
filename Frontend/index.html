@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DLA to Excel Report</title>
-<meta name="description" content="Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar, otomatis.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128196;</text></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -22,41 +21,30 @@
 
 <main class="container">
 
-  <div id="offline-notice" class="notice notice-red hidden">
-    <strong>Backend sedang tidak aktif.</strong>
-    <p>Pemrosesan PDF berjalan di komputer pemilik aplikasi, dan komputer itu
-       sedang mati atau terowongannya belum dinyalakan. Silakan coba lagi nanti.</p>
-  </div>
-
   <section class="panel">
 
     <div class="step">
       <div class="step-rail"><span class="step-num">1</span></div>
       <div class="step-body">
         <h2 class="step-title">Email Anda</h2>
-        <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
-        <div id="code-row" class="hidden">
-          <input type="password" id="code" placeholder="Kode akses" autocomplete="off">
-          <p class="field-note">Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
-        </div>
+        <input type="email" id="email" placeholder="email@asuransiastra.com" autocomplete="email">
       </div>
     </div>
 
     <div class="step">
       <div class="step-rail"><span class="step-num">2</span></div>
       <div class="step-body">
-        <h2 class="step-title">Berkas PDF</h2>
+        <h2 class="step-title">Upload PDF</h2>
 
         <p class="upload-note">
-          PDF Anda dihapus begitu Excel-nya jadi. Excel hasilnya hilang otomatis
-          setelah <span class="session-minutes">15</span> menit.
+          PDF akan dihapus setelah <span class="session-minutes">15</span> menit untuk menjaga privasi dan keamanan!
         </p>
 
         <div id="dropzone" class="dropzone" tabindex="0" role="button"
-             aria-label="Pilih atau jatuhkan berkas PDF">
+             aria-label="Select berkas PDF">
           <span class="dropzone-icon">📄</span>
           <span class="dropzone-text">
-            <span class="dropzone-main">Jatuhkan PDF di sini</span>
+            <span class="dropzone-main">Drop File PDF di sini</span>
             <span class="dropzone-sub">atau klik untuk memilih dari komputer</span>
           </span>
         </div>
@@ -71,12 +59,12 @@
       <div class="step-body">
         <h2 class="step-title">Proses</h2>
         <div class="action-row">
-          <button id="submit" disabled>Proses sekarang</button>
+          <button id="submit" disabled>Mulai</button>
           <p id="submit-hint" class="field-note">Isi email dan pilih minimal satu PDF.</p>
         </div>
         <div id="loading" class="loading hidden">
           <span class="spinner"></span>
-          <span>Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</span>
+          <span>Processing</span>
         </div>
       </div>
     </div>

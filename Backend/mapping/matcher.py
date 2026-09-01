@@ -26,13 +26,15 @@ SYNONYMS: dict[str, list[str]] = {
     "E": ["nomor objek", "objek", "object no", "object number", "nomor unit"],
 
     "H": ["nama tertanggung", "tertanggung", "nama pelapor", "pelapor",
-          "reported name", "insured", "insured name", "nama pemegang polis"],
+          "reported name", "insured", "insured name", "nama pemegang polis",
+          "name of insured", "the insured", "insured party"],
 
     "I": ["alamat tertanggung", "alamat pelapor", "alamat", "reported address",
           "insured address", "alamat lengkap"],
 
     "S": ["tanggal lapor", "tanggal pelaporan", "tanggal notifikasi", "tgl lapor",
-          "notification date", "tanggal surat", "tanggal laporan"],
+          "notification date", "tanggal surat", "tanggal laporan",
+          "cedent report date", "cedant report date", "report date"],
 
     "T": ["jam lapor", "waktu pelaporan", "jam pelaporan", "notification time"],
 
@@ -40,15 +42,21 @@ SYNONYMS: dict[str, list[str]] = {
           "cause of loss", "penyebab klaim"],
 
     "Y": ["nomor referensi", "nomor laporan", "nomor klaim eksternal",
-          "claim external ref no", "reference number", "nomor surat"],
+          "claim external ref no", "reference number", "nomor surat",
+          "claim no", "claim number", "claim ref", "your claim ref",
+          "client claim ref", "ref no", "your reference", "registration number",
+          "no dla"],
 
     "Z": ["kode pos", "postal code", "zip code", "kodepos"],
 
     "AA": ["lokasi kejadian", "detail lokasi", "tempat kejadian", "lokasi kerugian",
-           "lokasi", "detail location of loss", "location of loss"],
+           "lokasi", "detail location of loss", "location of loss",
+           "place of loss", "location of risk", "lokasi risiko", "loss location"],
 
     "AB": ["detail kejadian", "kronologi", "kronologis", "uraian kejadian",
-           "rincian kejadian", "detail of event", "deskripsi kejadian"],
+           "rincian kejadian", "detail of event", "deskripsi kejadian",
+           "description of loss", "details of loss", "loss details",
+           "uraian kerugian"],
 
     "AC": ["jenis kerusakan", "sifat kerusakan", "kerusakan", "nature of damage",
            "objek pertanggungan", "uraian kerusakan", "deskripsi kerusakan"],
@@ -61,9 +69,20 @@ SYNONYMS: dict[str, list[str]] = {
 
     "AQ": ["nilai kerugian", "jumlah kerugian", "nilai klaim", "estimasi kerugian",
            "nilai adjustment", "net adjustment", "md gross amount", "gross amount",
-           "total kerugian", "nilai ganti rugi"],
+           "total kerugian", "nilai ganti rugi",
+           # the template's own note on this column: the figure is already net
+           # of the deductible. "Definite Claim Amount" is the indemnity before
+           # it, so it is deliberately not listed here. Order matters -- the
+           # first of these that a letter carries is the one taken.
+           "nett amount", "net amount", "adjusted claim", "claim 100"],
 
-    "BT": ["share aab", "porsi aab", "bagian aab", "share", "porsi"],
+    # the DLA is addressed to Astra, so "your share" is Astra's. A cedant's own
+    # share ("Askrindo Share", "Our Share") is a different number -- left out on
+    # purpose so it is never mistaken for this one.
+    "AP": ["currency", "mata uang", "kurs", "curr"],
+
+    "BT": ["share aab", "porsi aab", "bagian aab", "share", "porsi", "your share",
+           "your share of claim", "your share of loss"],
 }
 
 def simplify(s: str) -> str:
@@ -106,6 +125,7 @@ class Matcher:
         self.model = _semantic_model()
         self._synonyms = {k.letter: [k.clean_name] + SYNONYMS.get(k.letter, [])
                          for k in self.targets}
+        self._not_a_column = {simplify(x) for x in settings.NOT_A_COLUMN}
         self._build_tfidf()
         self._build_embeddings()
 
@@ -141,22 +161,28 @@ class Matcher:
         if not p:
             return Match(None, None, 0.0, "no_match", "parameter kosong")
 
+        if p in self._not_a_column:
+            return Match(None, None, 0.0, "no_match",
+                         "tidak ada kolomnya di template standar")
+
         # exact
         for k in self.targets:
             if p == simplify(k.clean_name):
                 return Match(k.letter, k.clean_name, 1.0, "exact", "nama parameter sama dengan kolom standar")
 
-        # dictionary
+        # dictionary -- listed earlier means preferred, so two labels that both
+        # match cannot be settled by whichever one the letter prints first
         for k in self.targets:
-            for synonym in SYNONYMS.get(k.letter, []):
+            for i, synonym in enumerate(SYNONYMS.get(k.letter, [])):
                 if p == simplify(synonym):
-                    return Match(k.letter, k.clean_name, 0.97, "dictionary", "terdaftar sebagai padanan " + k.clean_name)
+                    return Match(k.letter, k.clean_name, 0.97 - 0.001 * i,
+                                 "dictionary", "terdaftar sebagai padanan " + k.clean_name)
 
         # semantic
         ranking = self._rank(pdf_param, p)
         if ranking:
             column, score = ranking[0]
-            if score >= settings.UNSURE:
+            if score >= settings.MATCH_MINIMUM:
                 c = Match(column.letter, column.clean_name, score, "semantic",
                           "mirip makna dengan " + column.clean_name)
                 if len(ranking) > 1 and score - ranking[1][1] < 0.08:

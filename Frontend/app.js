@@ -1,7 +1,5 @@
 "use strict";
 
-// Alamat backend: ?api=<url> menang dan diingat browser, lalu localStorage,
-// lalu nilai bawaan di config.js.
 function backendUrl() {
   const fromQuery = new URLSearchParams(location.search).get("api");
   if (fromQuery) {
@@ -27,7 +25,7 @@ function humanSize(b) {
   return (b / 1024 / 1024).toFixed(1) + " MB";
 }
 
-// ------------------------------------------------------------- cek backend
+// cek backend
 let limits = { files: 10, size: 15 };
 let needsCode = false;
 
@@ -75,7 +73,7 @@ function banner(color, message) {
   box.innerHTML = '<div class="notice notice-' + color + '">' + esc(message) + "</div>";
 }
 
-// ---------------------------------------------------------------- pilih PDF
+// select PDF
 let chosen = [];
 
 const dropzone = $("dropzone"), fileInput = $("file-input");
@@ -128,7 +126,7 @@ function renderFileList() {
   updateSubmit();
 }
 
-// ------------------------------------------------------------------- tombol
+// button
 const email = $("email"), submit = $("submit"), submitHint = $("submit-hint");
 const code = $("code");
 email.addEventListener("input", updateSubmit);
@@ -153,7 +151,7 @@ function showError(message) {
 }
 function hideError() { $("error").classList.add("hidden"); }
 
-// ------------------------------------------------------------------- proses
+// proses
 submit.addEventListener("click", async () => {
   hideError();
   $("results").classList.add("hidden");
@@ -181,7 +179,7 @@ submit.addEventListener("click", async () => {
   }
 });
 
-// -------------------------------------------------------------------- hasil
+// result
 let currentSession = null;
 let hasDownloaded = false;
 
@@ -248,28 +246,17 @@ function renderResults(d) {
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// -------------------------------------------------------- selesai & hapus
+// data deletion
 $("finish-btn").addEventListener("click", async () => {
   if (!currentSession) return;
-
-  const warning = hasDownloaded
-    ? `Hapus semua data Anda dari server sekarang?
-
-Yang dihapus: file Excel hasil, profil sementara, dan laporan proses.
-Tautan unduhan di atas akan berhenti berfungsi.`
-    : `Anda BELUM mengunduh file Excel-nya.
-
-Kalau dihapus sekarang, hasilnya ikut hilang dan PDF harus diproses ulang
-dari awal. Lanjutkan?`;
   if (!confirm(warning)) return;
 
   const btn = $("finish-btn");
   btn.disabled = true;
-  btn.textContent = "Menghapus…";
+  btn.textContent = "Deleting...";
 
   try {
-    const r = await fetch(API + "/api/finish/" + encodeURIComponent(currentSession),
-                          { method: "POST" });
+    const r = await fetch(API + "/api/finish/" + encodeURIComponent(currentSession), { method: "POST" });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "Gagal menghapus (HTTP " + r.status + ")");
 
@@ -290,14 +277,11 @@ dari awal. Lanjutkan?`;
     btn.disabled = false;
     btn.textContent = "Coba hapus lagi";
     showError(e.message === "Failed to fetch"
-      ? "Tidak bisa menghubungi backend untuk menghapus. Data tetap akan " +
-        "terhapus otomatis saat waktunya habis."
+      ? "Backend sedang offline. Data tetap akan terhapus otomatis saat waktunya habis"
       : e.message);
   }
 });
 
-// Menutup tab juga menghapus sesi. Harus sendBeacon: fetch dibatalkan browser
-// begitu halaman ditutup, jadi permintaannya tidak pernah sampai.
 window.addEventListener("pagehide", () => {
   if (currentSession && navigator.sendBeacon) {
     navigator.sendBeacon(API + "/api/finish/" + encodeURIComponent(currentSession));

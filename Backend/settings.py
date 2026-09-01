@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -16,53 +17,59 @@ FLAG_ROW = 4
 FIRST_DATA_ROW = 5
 
 # what each column is for
-COLUMNS_FROM_PDF = [
-    "B", "C", "D", "E", "H", "I", "S", "T", "V", "Y",
-    "Z", "AA", "AB", "AC", "AI", "AK", "AL", "AQ", "BT",
-]
+COLUMNS_FROM_PDF = ["B", "H", "V", "Y", "AB", "AC", "AP", "AQ", "BT"]
 
 CONSTANT_COLUMNS = {
     "F": "CPM - Heavy Equipment - CPM",
-    "N": None,
-    "O": "Y",
+    "N": None,   # the operator's own email, asked for when the service is used
     "U": "Occurrence",
     "W": "Partial Loss Accident",
-    "AD": "N",
-    "AF": "MGQ",
-    "AN": "CASC - Casco",
-    "AO": "Reinstate",
-    "AP": "IDR",
-    "AT": "0",
-    "BA": "Y",
+    "AI": "COMP - Comprehensive",
 }
 
 OPERATOR_EMAIL_COLUMN = "N"
 ROW_NUMBER_COLUMN = "A"
 UNIQUE_REF_COLUMN = "Y"
 INSURED_NAME_COLUMN = "H"   # Reported Name, filled from detection
-FORMULA_COLUMNS = {
-    "AM": ('="Klaim yang terjadi dengan detail sebagai berikut."&"\n\n"'
-           '&"Lokasi:"&" "&AA{r}&"\nDOL:"&" "&B{r}&"\n"'
-           '&"Nature of Damage:"&" "&AC{r}&"\n"'
-           '&"Cause of Loss:"&" "&AB{r}&"\n"'
-           '&"Kejadian sudden and unforseen"&"\n\n"'
-           '&"Nilai Adjustment "&" "&AP{r}&"\n"'
-           '&"Net Adjustment = "&" "&AQ{r}&"\n"'
-           '&"AAB Share = "&" "&AQ{r}*(BT{r})&""'),
-    "AR": "=AQ{r}*{share}",
-}
+# Investigation & Conclusion and Discount are both left blank, so nothing is
+# written as a formula any more. The mechanism stays for whenever one comes back.
+FORMULA_COLUMNS: dict[str, str] = {}
 
 EMPTY_COLUMNS = [
     "G", "J", "K", "L", "M", "P", "Q", "R", "X", "AE", "AG", "AH", "AJ",
     "AS", "AU", "AV", "AW", "AX", "AY", "AZ", "BH", "BI", "BK", "BL", "BM",
 ]
 MONITORING_COLUMNS = ["BN", "BO", "BP", "BQ", "BR", "BS"]
-DEFERRED_COLUMNS = ["BT"]
+# read from the document when it is there, left blank when it is not -- no
+# "N/A" marker is written into these
+DEFERRED_COLUMNS = ["BT", "AC"]
 FEE_COLUMNS = ["BB", "BC", "BD", "BE", "BF", "BG", "BJ"]
 
 # detection confidence thresholds
 CONFIDENT = 0.85
 UNSURE = 0.60
+
+# How close a PDF parameter must be to a column before its value is written.
+# At 0.60 the matcher accepted things like 'Loss Adjuster' as Time of Loss and
+# 'Type of Policy' as Policy No.; measured against the sample letters, every
+# correct semantic match sits at 0.75 or above.
+MATCH_MINIMUM = 0.75
+
+# Labels that show up in DLA letters but have no column in this template at all.
+# Without this the matcher pushes them into whichever column scores highest --
+# 'Coverage Period' ended up in Coverage, holding a date range.
+NOT_A_COLUMN = [
+    "period of insurance", "insurance period", "insured period", "coverage period",
+    "policy period", "periode pertanggungan", "masa pertanggungan",
+    "jangka waktu pertanggungan",
+    "deductible", "deductible amount", "risiko sendiri",
+    "loss adjuster", "appointed adjuster", "adjuster",
+    "cedant", "cedent", "cedant with", "reinsurer", "reinsured",
+    "name of reinsured", "reinsurance",
+    "bank address", "bank account", "account no", "account name",
+    "type of policy", "class of business", "note no", "total unit",
+    "beneficiary name", "claim status", "remarks", "loss", "risk",
+]
 
 OWN_COMPANY_NAMES = [
     "asuransi astra buana",
@@ -102,6 +109,12 @@ def template_file() -> Path:
     if not candidates:
         raise FileNotFoundError(f"Tidak ada file .xlsx di {TEMPLATE_DIR}")
     return candidates[0]
+
+def long_path(p) -> str:
+    s = str(Path(p).resolve())
+    if os.name == "nt" and len(s) >= 250 and not s.startswith("\\\\?\\"):
+        return "\\\\?\\" + s
+    return s
 
 
 def ensure_folders() -> None:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from . import settings
-from .build.excel import Row, Schema, load_schema, write_rows
+from .build.excel import (Row, Schema, dropdown_values, load_schema,
+                          resolve_dropdown, write_rows)
 from .extract import text
 from .extract.pdf_reader import PdfDocument, ocr_available, read_pdf
 from .extract.text import detect, folder_name
@@ -50,65 +52,129 @@ class ProcessResult:
         return [h for h in self.pdfs if h.skipped]
 
 
-def _format_value(column: str, raw):
+def _capped(items: list[str], limit: int = 10) -> list[str]:
+    items = list(items or [])
+    if len(items) <= limit:
+        return items
+    return items[:limit] + [f"... dan {len(items) - limit} lainnya"]
+
+
+# A value that will not parse as the thing the column holds is not that thing
+# at all. Falling back to the raw text is what dropped 'Atlas Adjusting
+# Indonesia' into Time of Loss and 'Asuransi Astra Buana O01AA0003' into Date of
+# Loss -- so these now come back empty and the row is marked instead.
+def _format_value(column: str, raw, param: str = ""):
     if column in ("B", "S"):
-        d = text.parse_date(raw)
-        return text.format_date(d) or text.clean_text(raw, 40)
+        return text.format_date(text.parse_date(raw))
     if column in ("C", "T"):
-        return text.parse_time(raw) or text.clean_text(raw, 20)
+        return text.parse_time(raw)
     if column == "Z":
-        return text.parse_postal_code(raw) or text.clean_text(raw, 10)
+        return text.parse_postal_code(raw)
     if column == "AQ":
-        return text.parse_money(raw)
+        amount = text.parse_money(raw)
+        # the template only validates this column for zero and up, so anything
+        # negative is a deductible line that was read as the claim amount
+        return None if amount is None or amount < 0 else amount
     if column == "BT":
-        return text.parse_percent(raw)
+        # some letters carry the share in the label instead of the value,
+        # as in "Your Share (20.0000 %)" = "IDR 5,637,694.13"
+        return text.parse_percent(raw) or text.parse_percent(param)
     return text.clean_text(raw)
 
 
+def _currency_in(raw: str, allowed: dict[str, str]) -> str | None:
+    for word in re.findall(r"\b[A-Za-z]{3}\b", raw or ""):
+        hit = allowed.get(word.casefold())
+        if hit:
+            return hit
+    return None
+
+
+_METHOD_WEIGHT = {"exact": 3.0, "dictionary": 2.0, "semantic": 1.0}
+
+
+def _confidence(method: str, score: float) -> float:
+    return _METHOD_WEIGHT.get(method, 0.0) + float(score)
+
+
 def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
-               schema: Schema) -> tuple[Row, list[str]]:
+               schema: Schema,
+               lists: dict[str, dict[str, str]]) -> tuple[Row, list[str]]:
     b = Row(source=doc.path.name)
     remarks: list[str] = []
+    header = {k.letter: k.clean_name for k in schema}
+    best: dict[str, tuple[float, object]] = {}
+    source_text: dict[str, str] = {}
 
     for param, raw in doc.key_value_pairs().items():
-        column = profile.column_for(param)
-        if column is None:
+        known = profile.parameter_map.get(param)
+        if known:
+            column, method, score = known["column"], known["method"], known["score"]
+        else:
             c = matcher.match(param)
-            if c.accepted:
-                profile.remember_parameter(param, c.column, c.method, c.score)
-                column = c.column
-                if c.needs_review:
-                    remarks.append(
-                        f"'{param}' dipetakan ke {c.column} ({c.header}) lewat "
-                        f"analisis makna dengan skor {c.score:.2f} - mohon dicek")
-            else:
+            if not c.accepted:
                 profile.remember_unmatched(param, c.reason)
                 continue
-        if column in b.values:
-            continue  # first occurrence wins
-        value = _format_value(column, raw)
-        if value is not None and value != "":
-            b.values[column] = value
+            profile.remember_parameter(param, c.column, c.method, c.score)
+            column, method, score = c.column, c.method, c.score
+            if c.needs_review:
+                remarks.append(
+                    f"'{param}' dipetakan ke {c.column} ({c.header}) lewat "
+                    f"analisis makna dengan skor {c.score:.2f} - mohon dicek")
+
+        value = _format_value(column, raw, param)
+        if value is None or value == "":
+            continue
+
+        allowed = lists.get(column)
+        if allowed and isinstance(value, str):
+            fitted = resolve_dropdown(allowed, value)
+            if fitted is not None:
+                value = fitted
+            elif text.parse_date(value) is not None:
+                # a date can never be one of the list entries, so the parameter
+                # was read into the wrong column
+                remarks.append(
+                    f"'{param}' berisi tanggal ({value}) padahal kolom {column} "
+                    f"({header.get(column)}) hanya menerima pilihan dari daftar "
+                    f"- tidak ditulis")
+                continue
+            else:
+                remarks.append(
+                    f"{column} ({header.get(column)}): '{value}' tidak ada di "
+                    f"daftar pilihan - mohon pilih manual di Excel")
+
+        # the most confident reading of a column wins, not the first one seen
+        rank = _confidence(method, score)
+        if column not in best or rank > best[column][0]:
+            best[column] = (rank, value)
+            source_text[column] = str(raw)
+
+    b.values = {column: value for column, (_, value) in best.items()}
+
+    # the only place these letters print the currency is inside the amount
+    # itself, as in "IDR 314,500,000.00"
+    if "AP" not in b.values and lists.get("AP"):
+        code = _currency_in(source_text.get("AQ", ""), lists["AP"])
+        if code:
+            b.values["AP"] = code
 
     # Reported Name is the insured, already settled during detection from the
     # "Insured Name" / "Name of Insured" label. Overwritten here because the
     # matcher often grabs some other party -- most often Astra Buana itself.
     b.values[settings.INSURED_NAME_COLUMN] = profile.official_name
 
+    # Notification Date is the date the letter was sent
     if settings.LETTER_DATE_COLUMN:
-        d, city, _ = text.letter_footer_date(doc.text)
+        d, _city, _ = text.letter_footer_date(doc.text)
         if d:
             b.values.setdefault(
                 settings.LETTER_DATE_COLUMN,
                 text.format_date(d, settings.LETTER_DATE_FORMAT))
-            if city:
-                b.values.setdefault("AA", city)
 
     policy = b.values.get("D")
     if policy and policy in settings.SHARE_BY_POLICY:
-        share = settings.SHARE_BY_POLICY[policy]
-        b.values["BT"] = f"{share * 100:g}%"
-        b.values["_aab_share"] = f"{share * 100:g}%"
+        b.values["BT"] = f"{settings.SHARE_BY_POLICY[policy] * 100:.2f}%"
 
     for k in schema.match_targets:
         if k.letter in settings.DEFERRED_COLUMNS:
@@ -134,6 +200,7 @@ def run(
     result = ProcessResult()
     schema = load_schema()
     matcher = Matcher(schema)
+    lists = dropdown_values(str(settings.template_file()))
     store = ProfileStore()
 
     result.notes.append(f"Jalur analisis makna: {matcher.mode}")
@@ -179,7 +246,7 @@ def run(
 
         rows: list[Row] = []
         for h in members:
-            b, remarks = _build_row(h.document, profile, matcher, schema)
+            b, remarks = _build_row(h.document, profile, matcher, schema, lists)
             ref = b.values.get(settings.UNIQUE_REF_COLUMN)
             is_new = ref and not str(ref).startswith("N/A")
             if is_new and ref in profile.processed_refs:
@@ -201,6 +268,14 @@ def run(
                 result.notes.append(
                     f"{profile.official_name}: dropdown tidak utuh "
                     f"({summary['dropdowns_after']}/{summary['dropdowns_before']})")
+            if summary["invalid"]:
+                result.notes.append(
+                    f"{profile.official_name}: {len(summary['invalid'])} nilai di luar "
+                    f"daftar pilihan - lihat laporan")
+            if summary["mandatory_empty"]:
+                result.notes.append(
+                    f"{profile.official_name}: kolom wajib kosong di semua baris - "
+                    + ", ".join(summary["mandatory_empty"]))
             result.excel_files.append(summary)
 
         for h in members:
@@ -244,6 +319,13 @@ def write_report(result: ProcessResult) -> Path:
             utuh = "dropdown utuh" if e["dropdowns_intact"] else "DROPDOWN RUSAK"
             b.append(f"  - {e['company']}: {e['rows']} baris, {utuh}")
             b.append(f"    {e['file']}")
+            for line in _capped(e.get("corrected")):
+                b.append(f"      ~ disamakan dengan daftar: {line}")
+            for line in _capped(e.get("invalid")):
+                b.append(f"      ! di luar daftar pilihan: {line}")
+            if e.get("mandatory_empty"):
+                b.append("      ! kolom wajib kosong di semua baris: "
+                         + ", ".join(e["mandatory_empty"]))
     if result.needs_review:
         b.append("")
         b.append("PERLU DITINJAU:")

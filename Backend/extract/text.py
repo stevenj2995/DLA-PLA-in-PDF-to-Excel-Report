@@ -42,7 +42,15 @@ RE_LETTER_FOOTER = re.compile(
     r"(?P<city>[A-Z][A-Za-z\.\s]{2,30}?)\s*,\s*"
     r"(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3,12})\s+(?P<year>\d{4})"
 )
-RE_DATE_WORDS = re.compile(r"\b(\d{1,2})\s+([A-Za-z]{3,12})\s+(\d{4})\b")
+# "Jakarta, October 27, 2024" -- the month-first order English letters use
+RE_LETTER_FOOTER_MONTH_FIRST = re.compile(
+    r"(?P<city>[A-Z][A-Za-z\.\s]{2,30}?)\s*,\s*"
+    r"(?P<month>[A-Za-z]{3,12})\s+(?P<day>\d{1,2}),?\s+(?P<year>\d{4})"
+)
+# Both orders, and any of space, hyphen or slash between the parts: these
+# letters write "20 November 2024", "12-Jan-2025" and "October 27, 2024" alike.
+RE_DATE_WORDS = re.compile(r"\b(\d{1,2})[\s\-/]+([A-Za-z]{3,12})[\s\-/,]+(\d{4})\b")
+RE_DATE_MONTH_FIRST = re.compile(r"\b([A-Za-z]{3,12})[\s\-/]+(\d{1,2})[\s\-/,]+(\d{4})\b")
 RE_DATE_NUMERIC = re.compile(r"\b(\d{1,4})[/\-\.](\d{1,2})[/\-\.](\d{2,4})\b")
 RE_TIME = re.compile(r"\b([01]?\d|2[0-3])[:.]([0-5]\d)\b")
 
@@ -67,6 +75,14 @@ def parse_date(text: str) -> date | None:
             if result:
                 return result
 
+    m = RE_DATE_MONTH_FIRST.search(s)
+    if m:
+        month = MONTHS.get(m.group(1).lower())
+        if month:
+            result = _date(int(m.group(3)), month, int(m.group(2)))
+            if result:
+                return result
+
     m = RE_DATE_NUMERIC.search(s)
     if m:
         a, b, c = (int(x) for x in m.groups())
@@ -77,14 +93,16 @@ def parse_date(text: str) -> date | None:
     return None
 
 def letter_footer_date(text: str) -> tuple[date | None, str | None, str | None]:
-    for m in reversed(list(RE_LETTER_FOOTER.finditer(text or ""))):
-        month = MONTHS.get(m.group("month").lower())
-        if not month:
-            continue
-        d = _date(int(m.group("year")), month, int(m.group("day")))
-        if d:
-            city = " ".join(m.group("city").split()).strip(" .,")
-            return d, city, m.group(0)
+    body = text or ""
+    for pattern in (RE_LETTER_FOOTER, RE_LETTER_FOOTER_MONTH_FIRST):
+        for m in reversed(list(pattern.finditer(body))):
+            month = MONTHS.get(m.group("month").lower())
+            if not month:
+                continue
+            d = _date(int(m.group("year")), month, int(m.group("day")))
+            if d:
+                city = " ".join(m.group("city").split()).strip(" .,")
+                return d, city, m.group(0)
     return None, None, None
 
 def format_date(d: date | None, style: str = "iso") -> str | None:
@@ -109,6 +127,8 @@ def parse_money(text: str) -> float | None:
         return float(text)
 
     s = re.sub(r"(?i)\b(rp|idr|usd|sgd)\b\.?", " ", str(text))
+    # accounting notation: (35,000,000.00) is a deduction, not an amount
+    negative = bool(re.search(r"\(\s*[\d.,]+\s*\)", s))
     s = re.sub(r"[^\d,.\-]", "", s).strip()
     if not s or not re.search(r"\d", s):
         return None
@@ -126,18 +146,23 @@ def parse_money(text: str) -> float | None:
         if not (len(tail) <= 2 and s.count(".") == 1):
             s = s.replace(".", "")
     try:
-        return float(s)
+        value = float(s)
     except ValueError:
         return None
+    return -value if negative and value > 0 else value
 
 
 def parse_postal_code(text: str) -> str | None:
     m = re.search(r"\b(\d{5})\b", str(text or ""))
     return m.group(1) if m else None
 
+# written the way the template writes it: "3,5%" and "6.000000%" both become
+# "3.50%" / "6.00%", so the Share column reads the same on every row
 def parse_percent(text: str) -> str | None:
     m = re.search(r"(\d+(?:[.,]\d+)?)\s*%", str(text or ""))
-    return m.group(1).replace(",", ".") + "%" if m else None
+    if not m:
+        return None
+    return "%.2f%%" % float(m.group(1).replace(",", "."))
 
 
 def clean_text(text: str, limit: int = 500) -> str:

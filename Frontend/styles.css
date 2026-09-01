@@ -1,5 +1,3 @@
-/* Satu tema: header putih, latar biru, satu panel putih berisi tiga langkah.
-   Semua warna berasal dari token di :root -- ubah di sini, seluruh halaman ikut. */
 :root {
   --blue: #125DAB;
   --blue-dark: #0E4A87;
@@ -44,9 +42,7 @@ body {
 .container { max-width: 760px; margin: 0 auto; padding: 0 20px }
 .hidden { display: none !important }
 
-/* ------------------------------------------------------------------ header */
-/* Selebar layar, bukan di dalam .container, supaya logonya benar-benar
-   menempel di pojok kiri atas. */
+/* header */
 .site-header {
   background: var(--surface);
   border-bottom: 1px solid rgba(11, 40, 74, .08);
@@ -73,7 +69,7 @@ body {
 .status-checking .dot { animation: blink 1s infinite }
 @keyframes blink { 50% { opacity: .25 } }
 
-/* ------------------------------------------------------------------- panel */
+/* panel */
 main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
 
 .panel {
@@ -84,8 +80,6 @@ main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
   margin-bottom: 18px;
 }
 
-/* Rel bernomor: lingkaran langkah dihubungkan garis vertikal, supaya
-   ketiganya terbaca sebagai satu alur, bukan tiga kotak terpisah. */
 .step { display: grid; grid-template-columns: 30px 1fr; gap: 18px }
 .step + .step { margin-top: 26px }
 .step-rail { position: relative }
@@ -118,7 +112,7 @@ input[type=email]:focus,
 input[type=password]:focus { outline: none; border-color: var(--blue); box-shadow: var(--ring) }
 #code-row input { margin-top: 0 }
 
-/* -------------------------------------------------------------- area unggah */
+/* upload */
 .upload-note {
   font-size: 12.5px; line-height: 1.5; margin-bottom: 12px;
   padding: 10px 13px; border-radius: var(--radius-sm);
@@ -156,7 +150,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 }
 .remove:hover { color: var(--red) }
 
-/* ------------------------------------------------------------------ tombol */
+/* button */
 .action-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap }
 .action-row .field-note { margin-top: 0 }
 
@@ -178,8 +172,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 .btn-danger:hover:not(:disabled) { background: #B93838 }
 .btn-danger:disabled { background: #C9A5A5; cursor: not-allowed }
 
-.loading { display: flex; align-items: center; gap: 11px; margin-top: 16px; font-size: 13px;
-           color: var(--text-soft) }
+.loading { display: flex; align-items: center; gap: 11px; margin-top: 16px; font-size: 13px; color: var(--text-soft) }
 .spinner {
   width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
   border: 2.5px solid var(--line); border-top-color: var(--blue);
@@ -187,7 +180,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 }
 @keyframes spin { to { transform: rotate(360deg) } }
 
-/* ------------------------------------------------------------------- kabar */
+/* kabar */
 .notice {
   padding: 14px 16px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13.5px;
 }
@@ -198,13 +191,12 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 .notice-blue { background: var(--blue-soft); border: 1px solid #DCE8F7; color: var(--blue-dark) }
 .notice-green { background: #F3FBF8; border: 1px solid #B7E3D2; color: #0A6B4A }
 
-/* ------------------------------------------------------------------- hasil */
+/* hasil */
 .section-heading {
   font-size: 17px; font-weight: 650; color: var(--on-blue);
   margin: 30px 0 14px; letter-spacing: -.1px;
 }
-/* judul blok hasil berdiri di atas latar biru, jadi putih; judul di dalam
-   panel putih tetap gelap -- dipisah supaya tidak saling menimpa */
+
 #block-excel h3, #block-review h3, #block-skipped h3 {
   font-size: 14px; font-weight: 650; color: var(--on-blue); margin: 22px 0 10px;
 }
@@ -244,7 +236,6 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 #results details .details-body { margin-top: 9px; font-size: 13px; color: var(--text-soft) }
 #results details ul { margin-left: 18px }
 
-/* -------------------------------------------------------------- layar sempit */
 @media (max-width: 620px) {
   .header-inner { padding: 10px 14px; gap: 10px }
   .brand { font-size: 15px }
