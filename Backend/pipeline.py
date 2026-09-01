@@ -1,13 +1,10 @@
 from __future__ import annotations
-
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-
 from . import settings
-from .build.excel import (Row, Schema, dropdown_values, load_schema,
-                          resolve_dropdown, write_rows)
+from .build.excel import (Row, Schema, dropdown_values, load_schema, resolve_dropdown, write_rows)
 from .extract import text
 from .extract.pdf_reader import PdfDocument, ocr_available, read_pdf
 from .extract.text import detect, folder_name
@@ -15,8 +12,7 @@ from .mapping import memory
 from .mapping.matcher import Matcher
 from .mapping.memory import Profile, ProfileStore
 
-# Flow: read PDF -> detect company -> group -> one Excel per company,
-# written into that company's own folder.
+# Flow: read PDF -> detect company -> group -> one Excel per company, written into that company's own folder.
 
 @dataclass
 class PdfResult:
@@ -58,11 +54,6 @@ def _capped(items: list[str], limit: int = 10) -> list[str]:
         return items
     return items[:limit] + [f"... dan {len(items) - limit} lainnya"]
 
-
-# A value that will not parse as the thing the column holds is not that thing
-# at all. Falling back to the raw text is what dropped 'Atlas Adjusting
-# Indonesia' into Time of Loss and 'Asuransi Astra Buana O01AA0003' into Date of
-# Loss -- so these now come back empty and the row is marked instead.
 def _format_value(column: str, raw, param: str = ""):
     if column in ("B", "S"):
         return text.format_date(text.parse_date(raw))
@@ -72,12 +63,9 @@ def _format_value(column: str, raw, param: str = ""):
         return text.parse_postal_code(raw)
     if column == "AQ":
         amount = text.parse_money(raw)
-        # the template only validates this column for zero and up, so anything
-        # negative is a deductible line that was read as the claim amount
+        # anything negative is a deductible line that was read as the claim amount
         return None if amount is None or amount < 0 else amount
     if column == "BT":
-        # some letters carry the share in the label instead of the value,
-        # as in "Your Share (20.0000 %)" = "IDR 5,637,694.13"
         return text.parse_percent(raw) or text.parse_percent(param)
     return text.clean_text(raw)
 
@@ -85,22 +73,19 @@ def _format_value(column: str, raw, param: str = ""):
 def _currency_in(raw: str, allowed: dict[str, str]) -> str | None:
     for word in re.findall(r"\b[A-Za-z]{2,3}\b", raw or ""):
         key = word.casefold()
-        if key == "rp":          # letters written in rupiah rarely say IDR
+        if key == "rp":
             key = "idr"
         hit = allowed.get(key)
         if hit:
             return hit
     return None
 
-
 _METHOD_WEIGHT = {"exact": 3.0, "dictionary": 2.0, "semantic": 1.0}
-
 
 def _confidence(method: str, score: float) -> float:
     return _METHOD_WEIGHT.get(method, 0.0) + float(score)
 
-
-def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
+def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher, 
                schema: Schema,
                lists: dict[str, dict[str, str]]) -> tuple[Row, list[str]]:
     b = Row(source=doc.path.name)
@@ -135,8 +120,6 @@ def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
             if fitted is not None:
                 value = fitted
             elif text.parse_date(value) is not None:
-                # a date can never be one of the list entries, so the parameter
-                # was read into the wrong column
                 remarks.append(
                     f"'{param}' berisi tanggal ({value}) padahal kolom {column} "
                     f"({header.get(column)}) hanya menerima pilihan dari daftar "
@@ -147,7 +130,6 @@ def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
                     f"{column} ({header.get(column)}): '{value}' tidak ada di "
                     f"daftar pilihan - mohon pilih manual di Excel")
 
-        # the most confident reading of a column wins, not the first one seen
         rank = _confidence(method, score)
         if column not in best or rank > best[column][0]:
             best[column] = (rank, value)
@@ -155,30 +137,33 @@ def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
 
     b.values = {column: value for column, (_, value) in best.items()}
 
-    # some letters print no amount of their own but spell it out in the share
-    # line, as in "IDR 2,251,430,159.00 x 2 % = IDR 45,028,603.18"
     if "AQ" not in b.values and "BT" in b.values:
         dasar = text.share_base(source_text.get("BT", ""))
         if dasar:
             b.values["AQ"] = dasar
             source_text["AQ"] = source_text.get("BT", "")
 
-    # the only place these letters print the currency is inside the amount
-    # itself, as in "IDR 314,500,000.00"
     if "AP" not in b.values and lists.get("AP"):
         code = _currency_in(source_text.get("AQ", ""), lists["AP"])
         if code:
             b.values["AP"] = code
 
-    # Reported Name is the insured, already settled during detection from the
-    # "Insured Name" / "Name of Insured" label. Overwritten here because the
-    # matcher often grabs some other party -- most often Astra Buana itself.
+    # a digit misread by OCR still looks like a normal amount, so it is flagged
+    if doc.is_scanned:
+        for column in settings.MONEY_COLUMNS:
+            if b.values.get(column) is not None:
+                remarks.append(
+                    f"{column} ({header.get(column)}): {b.values[column]} dibaca dari "
+                    f"halaman hasil pindaian - mohon cocokkan dengan angka di PDF")
+
     b.values[settings.INSURED_NAME_COLUMN] = profile.official_name
+
+    ref = text.letter_reference(doc.lines)
+    if ref:
+        b.values[settings.UNIQUE_REF_COLUMN] = ref
 
     # Notification Date is the date the letter was sent
     if settings.LETTER_DATE_COLUMN:
-        # read the same reconstructed lines the rest of the pipeline reads:
-        # raw page text drops the footer of some letters altogether
         d, _city, _ = text.letter_footer_date("\n".join(doc.lines))
         if d:
             b.values.setdefault(
@@ -274,8 +259,7 @@ def run(
 
         if rows:
             excel_name = f"{folder_name(profile.official_name)}_{stamp}.xlsx"
-            summary = write_rows(rows, folder / excel_name,
-                                 operator_email=operator_email, schema=schema)
+            summary = write_rows(rows, folder / excel_name, operator_email=operator_email, schema=schema)
             summary["company"] = profile.official_name
             if not summary["dropdowns_intact"]:
                 result.notes.append(
@@ -301,33 +285,30 @@ def run(
 
     for h in result.pdfs:
         if h.destination is None and h.path.exists():
-            h.destination = memory.move_pdf(
-                h.path, memory.undetected_folder(),
-                reason=h.skipped or "perusahaan tidak terdeteksi")
+            h.destination = memory.move_pdf(h.path, memory.undetected_folder(), reason=h.skipped or "perusahaan tidak terdeteksi")
 
     write_report(result)
     return result
 
-
 def write_report(result: ProcessResult) -> Path:
-    f = settings.OUTPUT_DIR / f"_LAPORAN_{result.started:%Y%m%d_%H%M%S}.txt"
+    f = settings.OUTPUT_DIR / f"_Laporan_{result.started:%Y%m%d_%H%M%S}.txt"
     f.parent.mkdir(parents=True, exist_ok=True)
 
     b: list[str] = []
-    b.append("LAPORAN PROSES OTOMASI PDF -> EXCEL")
+    b.append("Laporan:")
     b.append(f"Waktu   : {result.started:%Y-%m-%d %H:%M:%S}")
     b.append(f"Total   : {len(result.pdfs)} PDF | berhasil {len(result.succeeded)} | "
-             f"dilewati {len(result.failed)} | perlu ditinjau {len(result.needs_review)}")
+             f"dilewati {len(result.failed)} | perlu dicek lagi {len(result.needs_review)}")
     b.append("")
     for c in result.notes:
-        b.append(f"CATATAN: {c}")
+        b.append(f"Notes: {c}")
     if result.new_companies:
         b.append("")
-        b.append("PERUSAHAAN BARU (profil memory dibuat):")
+        b.append("New Company:")
         b += [f"  - {n}" for n in result.new_companies]
     if result.excel_files:
         b.append("")
-        b.append("FILE EXCEL YANG DIHASILKAN:")
+        b.append("File Excel yang Dihasilkan:")
         for e in result.excel_files:
             utuh = "dropdown utuh" if e["dropdowns_intact"] else "DROPDOWN RUSAK"
             b.append(f"  - {e['company']}: {e['rows']} baris, {utuh}")
@@ -341,14 +322,14 @@ def write_report(result: ProcessResult) -> Path:
                          + ", ".join(e["mandatory_empty"]))
     if result.needs_review:
         b.append("")
-        b.append("PERLU DITINJAU:")
+        b.append("Perlu Dicek Lagi:")
         for h in result.needs_review:
             b.append(f"  - {h.path.name} (perusahaan: {h.company or '-'}, "
                      f"keyakinan {h.confidence:.2f})")
             b += [f"      ! {w}" for w in h.warnings]
     if result.failed:
         b.append("")
-        b.append("DILEWATI:")
+        b.append("Dilewati:")
         b += [f"  - {h.path.name}: {h.skipped}" for h in result.failed]
 
     f.write_text("\n".join(b), encoding="utf-8")

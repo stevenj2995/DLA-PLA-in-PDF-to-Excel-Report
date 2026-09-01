@@ -1,13 +1,13 @@
 from __future__ import annotations
-
 import os
 import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import fitz # PyMuPDF
-
+import fitz
+import io
+import pytesseract
+from PIL import Image
 from .. import settings
 
 _TESSERACT_CANDIDATES = [
@@ -76,9 +76,6 @@ RE_KV = re.compile(
     r"(?P<value>.*?)(?=\s+[A-Za-z][A-Za-z0-9 ./&'%()\-]{1,45}?\s*[:\uff1a]|$)"
 )
 
-
-# Lines are rebuilt from word coordinates, not from PyMuPDF's reading order --
-# two-column layouts come out interleaved otherwise.
 def lines_by_position(page: fitz.Page, tolerance: float = 3.0) -> list[str]:
     bands: dict[int, list[tuple[float, str]]] = {}
     for x0, y0, _x1, _y1, text, *_ in page.get_text("words"):
@@ -86,29 +83,51 @@ def lines_by_position(page: fitz.Page, tolerance: float = 3.0) -> list[str]:
     return [" ".join(t for _, t in sorted(items)) for _, items in sorted(bands.items())]
 
 
+# Amount blocks are written as a heading with bulleted sub-lines, and the bullet
+# is a colon with nothing before it:
+#     Indemnity IDR 90,500,000.00
+#     Definite Loss Amount :
+#     : Deductible IDR (35,000,000.00)
+#     : Nett Amount IDR 55,500,000.00
+# RE_KV needs a label to the left of the colon, so it reads none of them and the
+# heading swallows the deductible line as its own value.
+RE_MONEY_LINE = re.compile(
+    r"^[:\s]*(?P<key>[A-Za-z][A-Za-z ./&'\-]{1,40}?)\s*[:：]?\s*"
+    r"(?P<value>(?:[A-Z]{2,3}|Rp)\s*\(?-?[\d.,]+\)?)\s*$"
+)
+
+
 def extract_key_values(lines: list[str]) -> dict[str, str]:
     pairs: dict[str, str] = {}
     for i, b in enumerate(lines):
+        found = False
         for m in RE_KV.finditer(b):
             key = " ".join(m.group("key").split())
             value = " ".join(m.group("value").split())
             if len(key) < 2:
                 continue
-            if not value and i + 1 < len(lines) and not RE_KV.search(lines[i + 1]):
+            found = True
+            if not value and i + 1 < len(lines) and not _is_pair(lines[i + 1]):
                 value = " ".join(lines[i + 1].split())
             if value:
                 pairs.setdefault(key, value)
+        if not found:
+            m = RE_MONEY_LINE.match(b)
+            if m:
+                key = " ".join(m.group("key").split())
+                if len(key) >= 2:
+                    pairs.setdefault(key, " ".join(m.group("value").split()))
     return pairs
+
+
+def _is_pair(line: str) -> bool:
+    return bool(RE_KV.search(line)) or bool(RE_MONEY_LINE.match(line))
 
 
 def _ocr_page(page: fitz.Page, dpi: int = 300) -> str:
     exe = find_tesseract()
     if not exe:
         raise RuntimeError("tesseract belum terpasang")
-    import io
-
-    import pytesseract
-    from PIL import Image
 
     pytesseract.pytesseract.tesseract_cmd = exe
     pix = page.get_pixmap(dpi=dpi)

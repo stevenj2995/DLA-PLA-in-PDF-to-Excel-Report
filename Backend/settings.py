@@ -16,12 +16,11 @@ HEADER_ROW = 3
 FLAG_ROW = 4
 FIRST_DATA_ROW = 5
 
-# what each column is for
 COLUMNS_FROM_PDF = ["B", "H", "V", "Y", "AB", "AC", "AP", "AQ", "BT"]
 
 CONSTANT_COLUMNS = {
     "F": "CPM - Heavy Equipment - CPM",
-    "N": None,   # the operator's own email, asked for when the service is used
+    "N": None,
     "U": "Occurrence",
     "W": "Partial Loss Accident",
     "AI": "COMP - Comprehensive",
@@ -30,9 +29,7 @@ CONSTANT_COLUMNS = {
 OPERATOR_EMAIL_COLUMN = "N"
 ROW_NUMBER_COLUMN = "A"
 UNIQUE_REF_COLUMN = "Y"
-INSURED_NAME_COLUMN = "H"   # Reported Name, filled from detection
-# Investigation & Conclusion and Discount are both left blank, so nothing is
-# written as a formula any more. The mechanism stays for whenever one comes back.
+INSURED_NAME_COLUMN = "H" # Reported Name, 
 FORMULA_COLUMNS: dict[str, str] = {}
 
 EMPTY_COLUMNS = [
@@ -40,14 +37,11 @@ EMPTY_COLUMNS = [
     "AS", "AU", "AV", "AW", "AX", "AY", "AZ", "BH", "BI", "BK", "BL", "BM",
 ]
 MONITORING_COLUMNS = ["BN", "BO", "BP", "BQ", "BR", "BS"]
-# read from the document when it is there, left blank when it is not -- no
-# "N/A" marker is written into these
+
 DEFERRED_COLUMNS = ["BT", "AC"]
 
-# Detail of Event takes whatever the document says. The template happens to put
-# a Cause of Loss dropdown on that column, but the wording it holds is not one
-# of those entries and is not meant to be, so it is not checked against them.
 FREE_TEXT_COLUMNS = ["AB"]
+MONEY_COLUMNS = ["AQ"]
 FEE_COLUMNS = ["BB", "BC", "BD", "BE", "BF", "BG", "BJ"]
 
 # detection confidence thresholds
@@ -108,8 +102,7 @@ SCANNED_PAGE_THRESHOLD = 120
 
 
 def template_file() -> Path:
-    candidates = sorted(TEMPLATE_DIR.glob("*.xlsx"),
-                      key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(TEMPLATE_DIR.glob("*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
     candidates = [p for p in candidates if not p.name.startswith("~$")]
     if not candidates:
         raise FileNotFoundError(f"Tidak ada file .xlsx di {TEMPLATE_DIR}")

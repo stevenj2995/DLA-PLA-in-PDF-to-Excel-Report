@@ -1,19 +1,16 @@
 from __future__ import annotations
-
 import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-
-os.environ.setdefault("USE_TF", "0")
-os.environ.setdefault("USE_TORCH", "1")
-
 from rapidfuzz import fuzz
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
 from .. import settings
 from ..build.excel import Column, Schema
+
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_TORCH", "1")
 
 SYNONYMS: dict[str, list[str]] = {
     "B": ["tanggal kejadian", "tanggal kerugian", "tgl kejadian", "tanggal loss",
@@ -70,24 +67,14 @@ SYNONYMS: dict[str, list[str]] = {
     "AQ": ["nilai kerugian", "jumlah kerugian", "nilai klaim", "estimasi kerugian",
            "nilai adjustment", "net adjustment", "md gross amount", "gross amount",
            "total kerugian", "nilai ganti rugi",
-           # the template's own note on this column: the figure is already net
-           # of the deductible. "Definite Claim Amount" is the indemnity before
-           # it, so it is deliberately not listed here. Order matters -- the
-           # first of these that a letter carries is the one taken.
+           # "Definite Claim Amount" is the indemnity before it, so it is deliberately not listed here. 
            "nett amount", "net amount", "total nett claim", "adjusted claim",
            "claim 100",
-           # last resort: a bare "Total" is only the net where nothing more
-           # specific is printed, so it never outranks the labels above
+           # last resort
            "total"],
 
-    # the DLA is addressed to Astra, so "your share" is Astra's. A cedant's own
-    # share ("Askrindo Share", "Our Share") is a different number -- left out on
-    # purpose so it is never mistaken for this one.
     "AP": ["currency", "mata uang", "kurs", "curr"],
 
-    # the DLA is addressed to Astra, so "your share" is Astra's. Lippo prints the
-    # very same line as "Our Share Amount" -- same position, same structure, same
-    # nett amount -- so it is accepted too, but only after every "your share".
     "BT": ["share aab", "porsi aab", "bagian aab", "share", "porsi", "your share",
            "your share of claim", "your share of loss", "your share on nett loss",
            "our share amount"],
@@ -131,20 +118,17 @@ class Matcher:
         self.schema = schema
         self.targets: list[Column] = schema.match_targets
         self.model = _semantic_model()
-        self._synonyms = {k.letter: [k.clean_name] + SYNONYMS.get(k.letter, [])
-                         for k in self.targets}
+        self._synonyms = {k.letter: [k.clean_name] + SYNONYMS.get(k.letter, []) for k in self.targets}
         self._not_a_column = {simplify(x) for x in settings.NOT_A_COLUMN}
         self._build_tfidf()
         self._build_embeddings()
 
     @property
     def mode(self) -> str:
-        return ("utama (model makna)" if self.model
-                else "cadangan (kamus + kemiripan kata)")
+        return ("utama (model makna)" if self.model else "cadangan (kamus + kemiripan kata)")
 
     def _build_tfidf(self) -> None:
-        corpus = [" ".join(simplify(x) for x in self._synonyms[k.letter])
-                  for k in self.targets]
+        corpus = [" ".join(simplify(x) for x in self._synonyms[k.letter]) for k in self.targets]
         self._tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4))
         self._matrix = self._tfidf.fit_transform(corpus) if corpus else None
 
@@ -170,16 +154,14 @@ class Matcher:
             return Match(None, None, 0.0, "no_match", "parameter kosong")
 
         if p in self._not_a_column:
-            return Match(None, None, 0.0, "no_match",
-                         "tidak ada kolomnya di template standar")
+            return Match(None, None, 0.0, "no_match", "tidak ada kolomnya di template standar")
 
         # exact
         for k in self.targets:
             if p == simplify(k.clean_name):
                 return Match(k.letter, k.clean_name, 1.0, "exact", "nama parameter sama dengan kolom standar")
 
-        # dictionary -- listed earlier means preferred, so two labels that both
-        # match cannot be settled by whichever one the letter prints first
+        # dictionary
         for k in self.targets:
             for i, synonym in enumerate(SYNONYMS.get(k.letter, [])):
                 if p == simplify(synonym):

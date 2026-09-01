@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -27,6 +28,14 @@ def check_setup() -> bool:
         print("Status OCR: AKTIF")
     else:
         print("Status OCR: TIDAK AKTIF")
+
+    # this script always tries to open a public tunnel, so an empty code is a warning
+    if os.environ.get("ACCESS_CODE", "").strip():
+        print("Kode akses: AKTIF")
+    else:
+        print("Kode akses: BELUM DIPASANG - siapa pun yang punya tautannya bisa "
+              "mengunggah dan mengunduh 12 sheet referensi Astra")
+        print("            pasang dengan: set ACCESS_CODE=kode-anda")
 
     return ok
 

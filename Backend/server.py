@@ -173,17 +173,12 @@ async def process(email: str = Form(...), files: list[UploadFile] = File(...),
                              f"{MAX_FILE_BYTES // (1024*1024)} MB.")
                 total += len(data)
                 if total > MAX_TOTAL_BYTES:
-                    raise HTTPException(400, "Total unggahan terlalu besar.")
-                # using the name as given could overwrite another file or
-                # escape the folder ("../"), so keep the basename only
+                    raise HTTPException(400, "File terlalu besar.")
                 (incoming / Path(b.filename).name).write_bytes(data)
 
             result = pipeline.run(
                 operator_email=email.strip(), input_folder=incoming)
-
-            # The PDF is not needed once the Excel exists. The pipeline moved
-            # it into OUTPUT/<company>/PDF/; delete it now so the document does
-            # not wait for the session to expire.
+            
             _delete_all_pdfs(workspace)
 
             sid = uuid.uuid4().hex
@@ -206,7 +201,6 @@ async def process(email: str = Form(...), files: list[UploadFile] = File(...),
                     "mandatory_empty": e.get("mandatory_empty", []),
                 })
 
-            # workspace is kept until expiry so the Excel stays downloadable
             _sessions[sid] = {"workspace": workspace, "time": time.time(), "file": downloads}
             keep["keep"] = True
 
@@ -241,7 +235,7 @@ async def process(email: str = Form(...), files: list[UploadFile] = File(...),
 def download(session: str, fid: str):
     d = _sessions.get(session)
     if not d or fid not in d["file"]:
-        raise HTTPException(404, "Hasil sudah kedaluwarsa. Silakan proses ulang.")
+        raise HTTPException(404, "Proses sudah expired! Silakan proses ulang!")
     f: Path = d["file"][fid]
     if not f.exists():
         raise HTTPException(404, "Berkas tidak ditemukan lagi.")
@@ -253,16 +247,6 @@ def download(session: str, fid: str):
 
 @app.post("/api/finish/{session}")
 def finish(session: str):
-    """Called when the visitor presses "I am done".
-
-    Deletes every trace of that session right away, without waiting for
-    SESSION_TTL: the Excel, the temporary company profiles, the report, and the
-    folder holding them. (The uploaded PDF went as soon as the Excel existed.)
-
-    Deliberately does not raise when the session is gone -- someone pressing
-    the button twice, or whose session already expired, should still see
-    "all clear" rather than an error that leaves them unsure.
-    """
     d = _sessions.pop(session, None)
     if d is None:
         return {"deleted": True, "files": 0,
@@ -274,9 +258,6 @@ def finish(session: str):
     except OSError:
         count = 0
     shutil.rmtree(workspace, ignore_errors=True)
-
-    # report honestly -- if something survived (e.g. a file Windows has locked
-    # because it is open), the visitor deserves to know
     still_there = workspace.exists()
     return {
         "deleted": not still_there,

@@ -58,7 +58,6 @@ run.py              satu-satunya perintah untuk menyalakan semuanya
 Backend/            semua kode pemroses
 Frontend/           halaman yang dilihat pengunjung, di-deploy ke Vercel
 Template/           file Excel acuan, jangan dihapus
-Docs/               catatan tentang apa yang masih perlu dikerjakan
 Memory/             profil per perusahaan (JSON, boleh diedit manual)
 Output/             peninggalan jalur lama, sudah tidak ditulis siapa pun
 ```
@@ -120,6 +119,12 @@ kantor, atau jalankan semuanya lokal seperti di bagian Menjalankan.
 
 ## Sebelum dipakai serius
 
-Baca `Docs/CONCERNS.md`. Isinya daftar hal yang masih perlu dikerjakan atau
-masih menunggu jawaban, termasuk satu yang harus Anda lakukan sendiri: membuka
-file hasil di Microsoft Excel dan memastikan dropdown-nya benar-benar muncul.
+Empat hal masih menunggu jawaban kantor, dan sementara ini dipakai asumsi:
+tanggal kaki surat ditulis ke kolom S (`LETTER_DATE_COLUMN`), tabel share AAB
+belum ada (`SHARE_BY_POLICY` kosong, jadi BT ikut isi dokumen), nilai yang tidak
+ada di daftar dropdown tetap ditulis tapi diberi peringatan, dan satu PDF
+dianggap selalu jadi satu baris.
+
+Satu hal harus Anda lakukan sendiri: buka satu file hasil di Microsoft Excel dan
+pastikan dropdown Cause of Loss benar-benar muncul. Semua pengujian sejauh ini
+lewat Python, dan yang menentukan adalah Excel.

@@ -1,6 +1,4 @@
-
 from __future__ import annotations
-
 import os
 import re
 import unicodedata
@@ -8,21 +6,18 @@ import zipfile
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-
 import openpyxl
 from openpyxl.utils import column_index_from_string, get_column_letter
-
 from .. import settings
 
-# ---------------------------------------- reading the template structure
-
+# reading the template structure
 @dataclass
 class Column:
-    index: int          # 1-based
-    letter: str        # "A", "AB", ...
-    group: str | None  # merged header on row 2
+    index: int # 1-based
+    letter: str # "A", "AB", ...
+    group: str | None # merged header on row 2
     header: str | None # header on row 3 -- what parameters are matched against
-    flag: str | None   # "Mandatory" / "Optional"
+    flag: str | None # "Mandatory" / "Optional"
     role: str = "empty"
     number_format: str = "@"
 
@@ -33,8 +28,7 @@ class Column:
     @property
     def clean_name(self) -> str:
         n = self.name.split("\n")[0]
-        return " ".join(n.replace("(YYYY-MM-DD)", "").replace("(HH:MM)", "")
-                         .replace("(Y/N)", "").split()).strip()
+        return " ".join(n.replace("(YYYY-MM-DD)", "").replace("(HH:MM)", "").replace("(Y/N)", "").split()).strip()
 
     @property
     def full_name(self) -> str:
@@ -55,7 +49,6 @@ class Schema:
 
     @property
     def match_targets(self) -> list[Column]:
-        # only these columns may receive a value matched from the PDF
         return [k for k in self.columns if k.role == "from_pdf"]
 
     def summary(self) -> dict[str, int]:
@@ -116,8 +109,6 @@ def load_schema(template_path: str | None = None) -> Schema:
     wb.close()
     return Schema(columns)
 
-# ------------------------------------- writing rows into a copy of the template
-
 RE_EXTLST = re.compile(r"<extLst>.*?</extLst>", re.S)
 RE_XR_UID = re.compile(r'\s+xr:uid="[^"]*"')
 RE_X14_DV = re.compile(r"<x14:dataValidation\b")
@@ -130,13 +121,10 @@ RE_LIST_SOURCE = re.compile(
 
 @dataclass
 class Row:
-    values: dict[str, object] = field(default_factory=dict)  # keyed by column letter
+    values: dict[str, object] = field(default_factory=dict) # keyed by column letter
     source: str = ""  # file name of the PDF it came from
     warnings: list[str] = field(default_factory=list)
 
-
-# openpyxl drops cross-sheet validations, so the dropdowns are patched back in
-# at the XML level; this finds the sheet part to patch.
 def _main_sheet_part(zf: zipfile.ZipFile) -> str:
     wb_xml = zf.read("xl/workbook.xml").decode("utf-8")
     m = re.search(
@@ -152,8 +140,6 @@ def _main_sheet_part(zf: zipfile.ZipFile) -> str:
     target = m2.group(1).lstrip("/")
     return target if target.startswith("xl/") else f"xl/{target}"
 
-
-# one (list source, sqref) pair per x14 validation
 def _x14_entries(block: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for chunk in block.split("</x14:dataValidation>"):
@@ -182,12 +168,6 @@ def _last_row(block: str) -> int:
                 rows.append(int(r2))
     return max(rows) if rows else 1048576
 
-
-# Editing has eaten holes in the template's dropdown ranges (Cause of Loss, for
-# one, covers AB5:AB44 AB79:AB81 AB83:AB95 ... so the rows in between get no
-# dropdown at all). Each range is widened back to the whole column -- but only
-# when no column is claimed by two different lists, because overlapping ranges
-# make Excel reject the file.
 def _widen_sqref(block: str) -> str:
     entries = _x14_entries(block)
     if not entries:
@@ -196,7 +176,7 @@ def _widen_sqref(block: str) -> str:
     for _source, sqref in entries:
         columns = _columns_of(sqref)
         if claimed.intersection(columns):
-            return block  # two lists share a column -- leave the ranges alone
+            return block # two lists share a column
         claimed.update(columns)
 
     first, last = settings.FIRST_DATA_ROW, _last_row(block)
@@ -226,9 +206,6 @@ _TYPOGRAPHIC = {
     "\u00a0": " ",
 }
 
-
-# the master lists are typed with en dashes and curly quotes, text lifted out of
-# a PDF almost never is, so both sides are flattened before being compared
 def canonical_key(value) -> str:
     s = unicodedata.normalize("NFKC", str(value))
     for odd, plain in _TYPOGRAPHIC.items():
@@ -272,12 +249,6 @@ RE_WORD = re.compile(r"[a-z0-9]+")
 def _words(key: str) -> set[str]:
     return set(RE_WORD.findall(key))
 
-
-# Beyond an exact hit this allows exactly one widening: every word of the value
-# occurs in one, and only one, list entry. That turns 'Collision' into
-# 'Collision/Contact' and 'Mechanical - Breakdown' into 'Machinery/Mechanical
-# Breakdown'. Ordinary fuzzy scoring was tried first and is not safe here -- it
-# rates '31 May 2024 - 31 May 2025' an 85 against 'AOG - Act of God'.
 def resolve_dropdown(allowed: dict[str, str], value) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -291,25 +262,21 @@ def resolve_dropdown(allowed: dict[str, str], value) -> str | None:
     return hits.pop() if len(hits) == 1 else None
 
 
-def _fit_dropdown(allowed: dict[str, str], value, column: Column, row: int,
-                  corrected: list[str], invalid: list[str]):
+def _fit_dropdown(allowed: dict[str, str], value, column: Column, row: int, corrected: list[str], invalid: list[str]):
     if not isinstance(value, str) or value.startswith("N/A"):
         return value
     exact = resolve_dropdown(allowed, value)
     if exact is None:
-        invalid.append("%s%d (%s): '%s' tidak ada di daftar pilihan"
-                       % (column.letter, row, column.clean_name, value))
+        invalid.append("%s%d (%s): '%s' tidak ada di daftar pilihan" % (column.letter, row, column.clean_name, value))
         return value
     if exact != value:
-        corrected.append("%s%d (%s): '%s' -> '%s'"
-                         % (column.letter, row, column.clean_name, value, exact))
+        corrected.append("%s%d (%s): '%s' -> '%s'" % (column.letter, row, column.clean_name, value, exact))
     return exact
 
 
 def _patch_extlst(source: Path, destination: Path, part: str, block: str) -> None:
     with zipfile.ZipFile(settings.long_path(source)) as zin, \
-         zipfile.ZipFile(settings.long_path(destination), "w",
-                         zipfile.ZIP_DEFLATED) as zout:
+         zipfile.ZipFile(settings.long_path(destination), "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             data = zin.read(item.filename)
             if item.filename == part:
@@ -367,14 +334,11 @@ def write_rows(
             if k.letter == settings.ROW_NUMBER_COLUMN:
                 value = str(start_number + i)
             elif k.letter in constants:
-                # these columns hold the same thing on every row, whatever a
-                # document happens to say
+                # columns hold the same thing on every row, whatever a document happens to say
                 value = constants[k.letter]
             elif k.letter in settings.FORMULA_COLUMNS:
                 value = _formula(k.letter, r, b)
             elif k.letter in b.values and k.role != "empty":
-                # a column the standard says to leave blank stays blank even if
-                # something upstream found a value for it
                 value = b.values[k.letter]
                 value = None if value == "" else value
             else:
@@ -385,11 +349,6 @@ def write_rows(
                 value = _fit_dropdown(lists[k.letter], value, k, r, corrected, invalid)
             cell.value = value
 
-    # Columns the template marks mandatory but that are deliberately left for
-    # someone to type in (its own cell comments say "diisi manual"), plus the
-    # fee and monitoring blocks, are not worth reporting -- they are empty by
-    # design on every run. What is worth reporting is a column meant to be
-    # filled that came out blank anyway.
     mandatory_empty = [
         "%s (%s)" % (k.letter, k.clean_name) for k in schema
         if (k.flag or "").lower() == "mandatory"
@@ -410,14 +369,11 @@ def write_rows(
 
     dropdowns_after = count_dropdowns(destination)
     if block and dropdowns_after < dropdowns_before:
-        # openpyxl numbers the sheet parts its own way, so the part to patch is
-        # resolved from the saved file rather than from the template
         with zipfile.ZipFile(settings.long_path(destination)) as z:
             part = _main_sheet_part(z)
         temp_path = destination.with_suffix(".tmp.xlsx")
         try:
             _patch_extlst(destination, temp_path, part, block)
-            # swap only once the patch is complete
             os.replace(settings.long_path(temp_path), settings.long_path(destination))
         finally:
             if os.path.exists(settings.long_path(temp_path)):
