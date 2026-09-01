@@ -83,8 +83,11 @@ def _format_value(column: str, raw, param: str = ""):
 
 
 def _currency_in(raw: str, allowed: dict[str, str]) -> str | None:
-    for word in re.findall(r"\b[A-Za-z]{3}\b", raw or ""):
-        hit = allowed.get(word.casefold())
+    for word in re.findall(r"\b[A-Za-z]{2,3}\b", raw or ""):
+        key = word.casefold()
+        if key == "rp":          # letters written in rupiah rarely say IDR
+            key = "idr"
+        hit = allowed.get(key)
         if hit:
             return hit
     return None
@@ -152,6 +155,14 @@ def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
 
     b.values = {column: value for column, (_, value) in best.items()}
 
+    # some letters print no amount of their own but spell it out in the share
+    # line, as in "IDR 2,251,430,159.00 x 2 % = IDR 45,028,603.18"
+    if "AQ" not in b.values and "BT" in b.values:
+        dasar = text.share_base(source_text.get("BT", ""))
+        if dasar:
+            b.values["AQ"] = dasar
+            source_text["AQ"] = source_text.get("BT", "")
+
     # the only place these letters print the currency is inside the amount
     # itself, as in "IDR 314,500,000.00"
     if "AP" not in b.values and lists.get("AP"):
@@ -166,7 +177,9 @@ def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
 
     # Notification Date is the date the letter was sent
     if settings.LETTER_DATE_COLUMN:
-        d, _city, _ = text.letter_footer_date(doc.text)
+        # read the same reconstructed lines the rest of the pipeline reads:
+        # raw page text drops the footer of some letters altogether
+        d, _city, _ = text.letter_footer_date("\n".join(doc.lines))
         if d:
             b.values.setdefault(
                 settings.LETTER_DATE_COLUMN,

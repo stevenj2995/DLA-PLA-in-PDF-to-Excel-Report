@@ -152,6 +152,30 @@ def parse_money(text: str) -> float | None:
     return -value if negative and value > 0 else value
 
 
+RE_PERCENT = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
+RE_NUMBER = re.compile(r"\d[\d.,]*")
+
+
+# "IDR 4,946,764.00 x 2.5 % = 123,669.10" -- the figure the share is taken of,
+# which is the nett claim. Only trusted when the arithmetic on the line adds up,
+# so a line that merely mentions a percentage never yields a number.
+def share_base(text: str) -> float | None:
+    s = str(text or "")
+    m = RE_PERCENT.search(s)
+    if not m:
+        return None
+    rate = float(m.group(1).replace(",", ".")) / 100.0
+    if not rate:
+        return None
+    numbers = [n for n in (parse_money(x)
+                           for x in RE_NUMBER.findall(RE_PERCENT.sub(" ", s))) if n]
+    for i, base in enumerate(numbers):
+        for result in numbers[i + 1:]:
+            if abs(base * rate - result) <= max(1.0, abs(result) * 0.01):
+                return base
+    return None
+
+
 def parse_postal_code(text: str) -> str | None:
     m = re.search(r"\b(\d{5})\b", str(text or ""))
     return m.group(1) if m else None

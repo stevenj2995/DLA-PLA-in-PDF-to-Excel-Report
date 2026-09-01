@@ -44,8 +44,8 @@ SYNONYMS: dict[str, list[str]] = {
     "Y": ["nomor referensi", "nomor laporan", "nomor klaim eksternal",
           "claim external ref no", "reference number", "nomor surat",
           "claim no", "claim number", "claim ref", "your claim ref",
-          "client claim ref", "ref no", "your reference", "registration number",
-          "no dla"],
+          "client claim ref", "ref no", "reff no", "ibs reff no",
+          "your reference", "registration number", "no dla"],
 
     "Z": ["kode pos", "postal code", "zip code", "kodepos"],
 
@@ -74,15 +74,23 @@ SYNONYMS: dict[str, list[str]] = {
            # of the deductible. "Definite Claim Amount" is the indemnity before
            # it, so it is deliberately not listed here. Order matters -- the
            # first of these that a letter carries is the one taken.
-           "nett amount", "net amount", "adjusted claim", "claim 100"],
+           "nett amount", "net amount", "total nett claim", "adjusted claim",
+           "claim 100",
+           # last resort: a bare "Total" is only the net where nothing more
+           # specific is printed, so it never outranks the labels above
+           "total"],
 
     # the DLA is addressed to Astra, so "your share" is Astra's. A cedant's own
     # share ("Askrindo Share", "Our Share") is a different number -- left out on
     # purpose so it is never mistaken for this one.
     "AP": ["currency", "mata uang", "kurs", "curr"],
 
+    # the DLA is addressed to Astra, so "your share" is Astra's. Lippo prints the
+    # very same line as "Our Share Amount" -- same position, same structure, same
+    # nett amount -- so it is accepted too, but only after every "your share".
     "BT": ["share aab", "porsi aab", "bagian aab", "share", "porsi", "your share",
-           "your share of claim", "your share of loss"],
+           "your share of claim", "your share of loss", "your share on nett loss",
+           "our share amount"],
 }
 
 def simplify(s: str) -> str:
