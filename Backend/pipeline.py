@@ -1,260 +1,167 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
-from . import settings
-from .build.excel import Row, Schema, load_schema, write_rows
-from .extract import text
-from .extract.pdf_reader import PdfDocument, ocr_available, read_pdf
-from .extract.text import detect, folder_name
-from .mapping import memory
-from .mapping.matcher import Matcher
-from .mapping.memory import Profile, ProfileStore
+from . import profiles, settings
+from .build import excel
+from .extract import parser, pdf_reader
+from .profiles import Profile
 
-# Flow: read PDF -> detect company -> group -> one Excel per company,
-# written into that company's own folder.
+SOURCE_COLUMN = "Sumber PDF"
+
 
 @dataclass
-class PdfResult:
+class FileResult:
     path: Path
-    document: PdfDocument | None = None
-    company: str | None = None
-    confidence: float = 0.0
-    level: str = "undetected"
-    row: Row | None = None
-    warnings: list[str] = field(default_factory=list)
-    skipped: str | None = None
-    destination: Path | None = None
+    ok: bool = False
+    reason: str = ""
+    values: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)   # columns the letter lacks
+    extra: dict[str, str] = field(default_factory=dict)  # labels the profile ignores
+
+    @property
+    def name(self) -> str:
+        return self.path.name
 
 
 @dataclass
-class ProcessResult:
-    started: datetime = field(default_factory=datetime.now)
-    pdfs: list[PdfResult] = field(default_factory=list)
-    excel_files: list[dict] = field(default_factory=list)
-    new_companies: list[str] = field(default_factory=list)
+class BatchResult:
+    profile: Profile | None = None
+    headers: list[str] = field(default_factory=list)
+    rows: list[list[str]] = field(default_factory=list)
+    files: list[FileResult] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    rejected: str = ""
+    excel_path: Path | None = None
 
     @property
-    def succeeded(self) -> list[PdfResult]:
-        return [h for h in self.pdfs if h.row is not None]
+    def done(self) -> list[FileResult]:
+        return [f for f in self.files if f.ok]
 
     @property
-    def needs_review(self) -> list[PdfResult]:
-        return [h for h in self.pdfs if h.warnings and h.skipped is None]
+    def skipped(self) -> list[FileResult]:
+        return [f for f in self.files if not f.ok]
 
     @property
-    def failed(self) -> list[PdfResult]:
-        return [h for h in self.pdfs if h.skipped]
+    def deviating(self) -> list[FileResult]:
+        return [f for f in self.files if f.ok and (f.missing or f.extra)]
 
 
-def _format_value(column: str, raw):
-    if column in ("B", "S"):
-        d = text.parse_date(raw)
-        return text.format_date(d) or text.clean_text(raw, 40)
-    if column in ("C", "T"):
-        return text.parse_time(raw) or text.clean_text(raw, 20)
-    if column == "Z":
-        return text.parse_postal_code(raw) or text.clean_text(raw, 10)
-    if column == "AQ":
-        return text.parse_money(raw)
-    if column == "BT":
-        return text.parse_percent(raw)
-    return text.clean_text(raw)
-
-
-def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
-               schema: Schema) -> tuple[Row, list[str]]:
-    b = Row(source=doc.path.name)
-    remarks: list[str] = []
-
-    for param, raw in doc.key_value_pairs().items():
-        column = profile.column_for(param)
-        if column is None:
-            c = matcher.match(param)
-            if c.accepted:
-                profile.remember_parameter(param, c.column, c.method, c.score)
-                column = c.column
-                if c.needs_review:
-                    remarks.append(
-                        f"'{param}' dipetakan ke {c.column} ({c.header}) lewat "
-                        f"analisis makna dengan skor {c.score:.2f} - mohon dicek")
-            else:
-                profile.remember_unmatched(param, c.reason)
-                continue
-        if column in b.values:
-            continue  # first occurrence wins
-        value = _format_value(column, raw)
-        if value is not None and value != "":
-            b.values[column] = value
-
-    # Reported Name is the insured, already settled during detection from the
-    # "Insured Name" / "Name of Insured" label. Overwritten here because the
-    # matcher often grabs some other party -- most often Astra Buana itself.
-    b.values[settings.INSURED_NAME_COLUMN] = profile.official_name
-
-    if settings.LETTER_DATE_COLUMN:
-        d, city, _ = text.letter_footer_date(doc.text)
-        if d:
-            b.values.setdefault(
-                settings.LETTER_DATE_COLUMN,
-                text.format_date(d, settings.LETTER_DATE_FORMAT))
-            if city:
-                b.values.setdefault("AA", city)
-
-    policy = b.values.get("D")
-    if policy and policy in settings.SHARE_BY_POLICY:
-        share = settings.SHARE_BY_POLICY[policy]
-        b.values["BT"] = f"{share * 100:g}%"
-        b.values["_aab_share"] = f"{share * 100:g}%"
-
-    for k in schema.match_targets:
-        if k.letter in settings.DEFERRED_COLUMNS:
+def _labels_of(document, profile: Profile | None) -> dict[str, str]:
+    """Every label:value in the document, minus pages that are another document."""
+    skip = profile.skip_headings if profile else ()
+    found: dict[str, str] = {}
+    for page in document.pages:
+        heading = page.heading.strip().casefold()
+        if any(heading == s for s in skip):
             continue
-        if k.letter not in b.values:
-            b.values[k.letter] = (
-                f"N/A: tidak ada parameter yang cocok di PDF untuk '{k.clean_name}'")
+        found.update(parser.pairs(
+            page.lines,
+            split_shared_lines=profile.split_shared_lines if profile else False,
+            bulleted_money=profile.bulleted_money if profile else True,
+        ))
+    return found
 
-    b.warnings = remarks
-    return b, remarks
 
-def run(
-    *,
-    operator_email: str,
-    input_folder: Path,
-    progress=None,
-) -> ProcessResult:
-    def _report(message: str):
-        if progress:
-            progress(message)
-
-    settings.ensure_folders()
-    result = ProcessResult()
-    schema = load_schema()
-    matcher = Matcher(schema)
-    store = ProfileStore()
-
-    result.notes.append(f"Jalur analisis makna: {matcher.mode}")
-    if not ocr_available():
-        result.notes.append(
-            "OCR belum terpasang")
-
-    pdf_files = memory.list_pdfs(input_folder)
-    if not pdf_files:
-        result.notes.append(f"Tidak ada PDF di {input_folder}")
+def read_one(path: Path, profile: Profile) -> FileResult:
+    result = FileResult(path=path)
+    document = pdf_reader.read(path)
+    if document.error:
+        result.reason = document.error
+        return result
+    if not document.has_text:
+        result.reason = ("tidak ada teks yang bisa dibaca - kemungkinan hasil "
+                         "pindaian, perlu OCR")
         return result
 
-    groups: dict[str, list[PdfResult]] = {}
-    for p in pdf_files:
-        _report(f"Membaca {p.name}")
-        h = PdfResult(path=p)
-        h.document = read_pdf(p)
-        h.warnings.extend(h.document.warnings)
-
-        if h.document.error:
-            h.skipped = h.document.error
-            result.pdfs.append(h)
+    found = _labels_of(document, profile)
+    used = {c.source for c in profile.columns} | set(profile.ignore)
+    for column in profile.columns:
+        raw = found.get(column.source)
+        if raw is None:
+            result.missing.append(column.source)
+            result.values.append("")
             continue
-
-        d = detect(h.document.lines, file_name=p.name)
-        h.company, h.confidence, h.level = d.name, d.confidence, d.level
-        h.warnings.extend(d.warnings)
-        result.pdfs.append(h)
-
-        if d.level == "undetected":
-            continue
-        profile, is_new = store.get_or_create(d.name)
-        if is_new:
-            result.new_companies.append(profile.official_name)
-        groups.setdefault(profile.key, []).append(h)
-
-    stamp = result.started.strftime("%Y%m%d")
-    for members in groups.values():
-        profile = store.find(members[0].company)
-        _report(f"Menyusun {profile.official_name} ({len(members)} PDF)")
-        folder = memory.company_folder(profile.group, profile.folder)
-        pdf_folder = folder / settings.PDF_SUBFOLDER
-
-        rows: list[Row] = []
-        for h in members:
-            b, remarks = _build_row(h.document, profile, matcher, schema)
-            ref = b.values.get(settings.UNIQUE_REF_COLUMN)
-            is_new = ref and not str(ref).startswith("N/A")
-            if is_new and ref in profile.processed_refs:
-                h.skipped = f"sudah pernah diproses (ref {ref})"
-                h.destination = memory.move_pdf(h.path, pdf_folder, reason="duplikat")
-                continue
-            if is_new:
-                profile.processed_refs.append(str(ref))
-            h.row = b
-            h.warnings.extend(remarks)
-            rows.append(b)
-
-        if rows:
-            excel_name = f"{folder_name(profile.official_name)}_{stamp}.xlsx"
-            summary = write_rows(rows, folder / excel_name,
-                                 operator_email=operator_email, schema=schema)
-            summary["company"] = profile.official_name
-            if not summary["dropdowns_intact"]:
-                result.notes.append(
-                    f"{profile.official_name}: dropdown tidak utuh "
-                    f"({summary['dropdowns_after']}/{summary['dropdowns_before']})")
-            result.excel_files.append(summary)
-
-        for h in members:
-            if h.destination is None:
-                h.destination = memory.move_pdf(
-                    h.path, pdf_folder,
-                    reason=f"{profile.official_name} (keyakinan {h.confidence:.2f})")
-        profile.pdf_count += len(rows)
-        store.save(profile)
-
-    for h in result.pdfs:
-        if h.destination is None and h.path.exists():
-            h.destination = memory.move_pdf(
-                h.path, memory.undetected_folder(),
-                reason=h.skipped or "perusahaan tidak terdeteksi")
-
-    write_report(result)
+        result.values.append(profiles.TAKE[column.take](raw))
+    result.extra = {k: v for k, v in found.items() if k not in used and v}
+    result.ok = True
     return result
 
 
-def write_report(result: ProcessResult) -> Path:
-    f = settings.OUTPUT_DIR / f"_LAPORAN_{result.started:%Y%m%d_%H%M%S}.txt"
-    f.parent.mkdir(parents=True, exist_ok=True)
+def run(paths, *, profile_key: str | None = None, on_mismatch: str = "merge",
+        progress=None) -> BatchResult:
+    """Read a batch of one company's DLAs into a single sheet.
 
-    b: list[str] = []
-    b.append("LAPORAN PROSES OTOMASI PDF -> EXCEL")
-    b.append(f"Waktu   : {result.started:%Y-%m-%d %H:%M:%S}")
-    b.append(f"Total   : {len(result.pdfs)} PDF | berhasil {len(result.succeeded)} | "
-             f"dilewati {len(result.failed)} | perlu ditinjau {len(result.needs_review)}")
-    b.append("")
-    for c in result.notes:
-        b.append(f"CATATAN: {c}")
-    if result.new_companies:
-        b.append("")
-        b.append("PERUSAHAAN BARU (profil memory dibuat):")
-        b += [f"  - {n}" for n in result.new_companies]
-    if result.excel_files:
-        b.append("")
-        b.append("FILE EXCEL YANG DIHASILKAN:")
-        for e in result.excel_files:
-            utuh = "dropdown utuh" if e["dropdowns_intact"] else "DROPDOWN RUSAK"
-            b.append(f"  - {e['company']}: {e['rows']} baris, {utuh}")
-            b.append(f"    {e['file']}")
-    if result.needs_review:
-        b.append("")
-        b.append("PERLU DITINJAU:")
-        for h in result.needs_review:
-            b.append(f"  - {h.path.name} (perusahaan: {h.company or '-'}, "
-                     f"keyakinan {h.confidence:.2f})")
-            b += [f"      ! {w}" for w in h.warnings]
-    if result.failed:
-        b.append("")
-        b.append("DILEWATI:")
-        b += [f"  - {h.path.name}: {h.skipped}" for h in result.failed]
+    on_mismatch decides what happens when a document does not carry exactly the
+    parameters the profile expects: 'merge' keeps going, adding any unexpected
+    label as a further column and leaving blanks where one is absent, while
+    'reject' refuses the whole batch so it can be looked at.
+    """
+    paths = [Path(p) for p in paths]
+    batch = BatchResult()
 
-    f.write_text("\n".join(b), encoding="utf-8")
-    return f
+    profile = profiles.by_key(profile_key) if profile_key else None
+    if profile is None:
+        profile = _detect(paths, batch)
+        if profile is None:
+            return batch
+    batch.profile = profile
+
+    for i, path in enumerate(paths, start=1):
+        if progress:
+            progress(i, len(paths), path.name)
+        batch.files.append(read_one(path, profile))
+
+    if not batch.done:
+        batch.rejected = "Tidak ada satu pun PDF yang bisa dibaca."
+        return batch
+
+    if on_mismatch == "reject" and batch.deviating:
+        first = batch.deviating[0]
+        batch.rejected = (
+            f"{len(batch.deviating)} dari {len(batch.done)} PDF parameternya tidak "
+            f"sama dengan yang lain, contohnya {first.name}. Batch ditolak sesuai "
+            f"pilihan Anda.")
+        return batch
+
+    extra_headers: list[str] = []
+    for f in batch.done:
+        for label in f.extra:
+            if label not in extra_headers:
+                extra_headers.append(label)
+
+    batch.headers = [c.header for c in profile.columns] + extra_headers + [SOURCE_COLUMN]
+    for f in batch.done:
+        batch.rows.append(f.values + [f.extra.get(h, "") for h in extra_headers] + [f.name])
+
+    if extra_headers:
+        batch.notes.append(
+            f"{len(extra_headers)} parameter di luar profil {profile.name} ikut "
+            f"dimasukkan sebagai kolom tambahan: {', '.join(extra_headers)}.")
+    blank = [f.name for f in batch.done if f.missing]
+    if blank:
+        batch.notes.append(
+            f"{len(blank)} PDF tidak memuat sebagian parameter, selnya dikosongkan.")
+    return batch
+
+
+def _detect(paths: list[Path], batch: BatchResult) -> Profile | None:
+    for path in paths:
+        document = pdf_reader.read(path)
+        if document.error or not document.has_text:
+            continue
+        found = profiles.detect(_labels_of(document, None))
+        if found:
+            return found
+    batch.rejected = (
+        "Perusahaan tidak dikenali dari PDF yang diunggah. Saat ini baru "
+        + ", ".join(p.name for p in profiles.ALL) + " yang didukung.")
+    return None
+
+
+def to_excel(batch: BatchResult, folder: Path, stem: str = "") -> Path | None:
+    if not batch.rows:
+        return None
+    name = stem or (batch.profile.name if batch.profile else "DLA")
+    batch.excel_path = excel.write(Path(folder) / f"{name}.xlsx", batch.headers, batch.rows)
+    return batch.excel_path

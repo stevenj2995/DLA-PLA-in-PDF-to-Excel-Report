@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DLA to Excel Report</title>
-<meta name="description" content="Ubah laporan DLA berbentuk PDF menjadi Excel sesuai template standar, otomatis.">
+<title>DLA to Excel</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128196;</text></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,7 +12,7 @@
 <header class="site-header">
   <div class="header-inner">
     <img src="logo.png" alt="Asuransi Astra" class="logo">
-    <span class="brand">DLA to Excel Report</span>
+    <span class="brand">DLA to Excel</span>
     <div id="status" class="status-pill status-checking">
       <span class="dot"></span><span id="status-text">Menghubungi…</span>
     </div>
@@ -23,9 +22,7 @@
 <main class="container">
 
   <div id="offline-notice" class="notice notice-red hidden">
-    <strong>Backend sedang tidak aktif.</strong>
-    <p>Pemrosesan PDF berjalan di komputer pemilik aplikasi, dan komputer itu
-       sedang mati atau terowongannya belum dinyalakan. Silakan coba lagi nanti.</p>
+    Backend sedang tidak aktif. Komputer pemroses mungkin belum dinyalakan.
   </div>
 
   <section class="panel">
@@ -33,30 +30,17 @@
     <div class="step">
       <div class="step-rail"><span class="step-num">1</span></div>
       <div class="step-body">
-        <h2 class="step-title">Email Anda</h2>
-        <input type="email" id="email" placeholder="nama@perusahaan.co.id" autocomplete="email">
-        <div id="code-row" class="hidden">
-          <input type="password" id="code" placeholder="Kode akses" autocomplete="off">
-          <p class="field-note">Aplikasi ini dibatasi. Masukkan kode akses dari pemiliknya.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="step">
-      <div class="step-rail"><span class="step-num">2</span></div>
-      <div class="step-body">
-        <h2 class="step-title">Berkas PDF</h2>
-
+        <h2 class="step-title">Upload DLA</h2>
         <p class="upload-note">
-          PDF Anda dihapus begitu Excel-nya jadi. Excel hasilnya hilang otomatis
-          setelah <span class="session-minutes">15</span> menit.
+          Satu batch berisi <strong>satu perusahaan</strong>. Perusahaannya dikenali
+          otomatis dari isi dokumen. PDF dihapus dari server begitu Excel selesai dibuat.
         </p>
 
         <div id="dropzone" class="dropzone" tabindex="0" role="button"
-             aria-label="Pilih atau jatuhkan berkas PDF">
+             aria-label="Pilih berkas PDF">
           <span class="dropzone-icon">📄</span>
           <span class="dropzone-text">
-            <span class="dropzone-main">Jatuhkan PDF di sini</span>
+            <span class="dropzone-main">Letakkan PDF di sini</span>
             <span class="dropzone-sub">atau klik untuk memilih dari komputer</span>
           </span>
         </div>
@@ -67,16 +51,44 @@
     </div>
 
     <div class="step">
+      <div class="step-rail"><span class="step-num">2</span></div>
+      <div class="step-body">
+        <h2 class="step-title">Kalau ada yang parameternya beda</h2>
+        <p class="field-note">
+          Satu perusahaan seharusnya seragam. Kalau ternyata ada yang menyimpang,
+          itu tanda ada berkas yang salah masuk atau gagal terbaca.
+        </p>
+        <div class="choice-list">
+          <label class="choice">
+            <input type="radio" name="mismatch" value="merge" checked>
+            <span><strong>Gabungkan semua</strong>
+              <span class="choice-sub">Parameter tambahan jadi kolom baru, yang tidak ada
+              dikosongkan. Tidak ada data yang hilang.</span></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="mismatch" value="reject">
+            <span><strong>Tolak batch-nya</strong>
+              <span class="choice-sub">Proses dihentikan supaya bisa Anda periksa dulu.</span></span>
+          </label>
+        </div>
+
+        <div id="code-row" class="hidden">
+          <label class="step-title" for="code">Kode akses</label>
+          <input type="password" id="code" placeholder="kode dari admin" autocomplete="off">
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
       <div class="step-rail"><span class="step-num">3</span></div>
       <div class="step-body">
         <h2 class="step-title">Proses</h2>
         <div class="action-row">
-          <button id="submit" disabled>Proses sekarang</button>
-          <p id="submit-hint" class="field-note">Isi email dan pilih minimal satu PDF.</p>
+          <button id="submit" disabled>Mulai</button>
+          <p id="submit-hint" class="field-note">Pilih minimal satu PDF.</p>
         </div>
         <div id="loading" class="loading hidden">
-          <span class="spinner"></span>
-          <span>Memproses… PDF hasil pindaian bisa memakan waktu lebih lama.</span>
+          <span class="spinner"></span><span>Membaca dokumen…</span>
         </div>
       </div>
     </div>
@@ -90,26 +102,19 @@
     <div id="stats" class="stats"></div>
     <div id="block-notes"></div>
     <div id="block-excel"></div>
-    <div id="block-review"></div>
+    <div id="block-preview"></div>
+    <div id="block-deviating"></div>
     <div id="block-skipped"></div>
 
     <div class="panel panel-cleanup">
       <h3 class="panel-title">Selesai &amp; hapus data</h3>
-
       <div class="notice notice-amber">
-        <strong>Data Anda masih tersimpan sementara di server.</strong>
-        <p>Unduh Excel yang Anda perlukan lebih dulu, lalu tekan tombol di bawah.
-           Yang akan dihapus saat itu juga:</p>
-        <ul>
-          <li>File Excel hasil</li>
-          <li>Profil perusahaan sementara yang dipelajari dari PDF Anda</li>
-          <li>Laporan proses</li>
-        </ul>
-        <p>PDF yang Anda unggah <strong>sudah dihapus</strong> sejak Excel-nya
-           selesai dibuat. Kalau tombol ini tidak ditekan, semuanya tetap terhapus
-           otomatis dalam <span class="session-minutes">15</span> menit.</p>
+        <strong>Excel hasil masih tersimpan sementara di server.</strong>
+        <p>Unduh dulu berkasnya, lalu tekan tombol di bawah untuk menghapusnya
+           saat itu juga. PDF yang Anda unggah <strong>sudah dihapus</strong> sejak
+           Excel selesai dibuat. Kalau tombol ini tidak ditekan, semuanya tetap
+           terhapus otomatis dalam <span class="session-minutes">15</span> menit.</p>
       </div>
-
       <button id="finish-btn" class="btn-danger">
         Saya sudah selesai &mdash; hapus data saya sekarang</button>
       <div id="finish-result" class="hidden"></div>
