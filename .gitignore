@@ -1,8 +1,8 @@
+# Dokumen klaim asli tidak pernah masuk repo
+PDF Files/
 Output/
-Memory/
-Training and Testing Data/
-Template/*.xlsx
 *.pdf
+*.xlsx
 
 __pycache__/
 *.py[cod]
