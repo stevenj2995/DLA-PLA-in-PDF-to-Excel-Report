@@ -43,6 +43,11 @@ MONITORING_COLUMNS = ["BN", "BO", "BP", "BQ", "BR", "BS"]
 # read from the document when it is there, left blank when it is not -- no
 # "N/A" marker is written into these
 DEFERRED_COLUMNS = ["BT", "AC"]
+
+# Detail of Event takes whatever the document says. The template happens to put
+# a Cause of Loss dropdown on that column, but the wording it holds is not one
+# of those entries and is not meant to be, so it is not checked against them.
+FREE_TEXT_COLUMNS = ["AB"]
 FEE_COLUMNS = ["BB", "BC", "BD", "BE", "BF", "BG", "BJ"]
 
 # detection confidence thresholds

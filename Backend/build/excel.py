@@ -380,7 +380,8 @@ def write_rows(
             else:
                 value = None
 
-            if value is not None and k.letter in lists:
+            if (value is not None and k.letter in lists
+                    and k.letter not in settings.FREE_TEXT_COLUMNS):
                 value = _fit_dropdown(lists[k.letter], value, k, r, corrected, invalid)
             cell.value = value
 

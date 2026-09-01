@@ -126,7 +126,7 @@ def _build_row(doc: PdfDocument, profile: Profile, matcher: Matcher,
         if value is None or value == "":
             continue
 
-        allowed = lists.get(column)
+        allowed = None if column in settings.FREE_TEXT_COLUMNS else lists.get(column)
         if allowed and isinstance(value, str):
             fitted = resolve_dropdown(allowed, value)
             if fitted is not None:
