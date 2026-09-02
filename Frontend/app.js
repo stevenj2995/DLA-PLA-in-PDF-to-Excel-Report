@@ -10,15 +10,7 @@ function backendUrl() {
   try { saved = localStorage.getItem("backend_url"); } catch (e) {}
   return (saved || window.BACKEND_URL || "").replace(/\/+$/, "");
 }
-let API = backendUrl();
-
-// The page can be served by the backend itself, in which case API stays empty
-// and every call is same-origin. Hosted apart from it -- on Vercel -- there is
-// nothing to talk to until an address is given, so the field appears then.
-function rememberBackend(url) {
-  API = (url || "").trim().replace(/\/+$/, "");
-  try { localStorage.setItem("backend_url", API); } catch (e) {}
-}
+const API = backendUrl();
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,15 +45,12 @@ async function checkBackend() {
     pill.className = "status-pill status-live";
     text.textContent = "Siap";
     $("offline-notice").classList.add("hidden");
-    $("backend-row").classList.add("hidden");
     updateSubmit();
     return true;
   } catch (e) {
     pill.className = "status-pill status-down";
     text.textContent = "Tidak aktif";
     $("offline-notice").classList.remove("hidden");
-    $("backend-row").classList.remove("hidden");
-    if (!$("backend-url").value) $("backend-url").value = API;
     return false;
   }
 }
@@ -283,16 +272,6 @@ window.addEventListener("pagehide", () => {
   if (currentSession && navigator.sendBeacon) {
     navigator.sendBeacon(API + "/api/finish/" + encodeURIComponent(currentSession));
   }
-});
-
-$("backend-save").addEventListener("click", () => {
-  rememberBackend($("backend-url").value);
-  $("status-text").textContent = "Menghubungi...";
-  $("status").className = "status-pill status-checking";
-  checkBackend();
-});
-$("backend-url").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("backend-save").click();
 });
 
 checkBackend();

@@ -1,3 +1,4 @@
-// Dikosongkan berarti "pakai alamat yang sama dengan halaman ini".
-// Isi hanya kalau halaman di-hosting terpisah dari backend, misalnya di Vercel.
-window.BACKEND_URL = "";
+// Halaman Vercel berjalan di laptop yang sama dengan backend, jadi ia
+// memanggil alamat lokal itu langsung. Dibiarkan kosong berarti "asal yang
+// sama", yang dipakai saat halaman dibuka dari backend sendiri.
+window.BACKEND_URL = "http://localhost:8000";

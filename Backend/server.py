@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import pipeline, profiles, settings
@@ -24,6 +24,27 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# The page is served from Vercel over https while the backend answers on
+# http://localhost. Chromium treats that as reaching into a private network and
+# holds the request behind a preflight that has to be answered explicitly.
+@app.middleware("http")
+async def allow_private_network(request, call_next):
+    if (request.method == "OPTIONS"
+            and request.headers.get("access-control-request-private-network") == "true"):
+        response = Response(status_code=200)
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+        origin = request.headers.get("origin")
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
 
 _lock = threading.Lock()
 _sessions: dict[str, dict] = {}

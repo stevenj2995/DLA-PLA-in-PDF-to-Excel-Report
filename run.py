@@ -87,11 +87,12 @@ def main() -> int:
     bar = "=" * 62
     print()
     print(bar)
-    print(" BUKA DI BROWSER:")
+    print(" BUKA DI BROWSER, salah satu:")
     print(f"   http://localhost:{PORT}")
+    print(f"   {VERCEL_SITE}")
     print()
-    print(" Halaman dan API ada di alamat yang sama, jadi tidak ada yang")
-    print(" perlu disetel. Unggah PDF langsung dari halaman itu.")
+    print(" Keduanya memakai backend ini. Yang Vercel hanya jalan di laptop")
+    print(" ini, sebab ia memanggil localhost.")
     print(bar)
 
     exe = shutil.which("cloudflared")
@@ -105,15 +106,9 @@ def main() -> int:
         else:
             print()
             print(bar)
-            print(" LEWAT VERCEL - klik ini, alamatnya sudah terisi:")
-            print(f"   {VERCEL_SITE}/?api={url}")
-            print()
-            print(" Halaman Vercel tidak bisa memanggil localhost, jadi ia perlu")
-            print(" alamat terowongan di atas. Cukup sekali per sesi: browser")
-            print(" mengingatnya. Alamat berubah tiap run.py dijalankan ulang.")
-            print()
-            print(" Atau langsung tanpa Vercel:")
+            print(" ALAMAT UNTUK DEVICE LAIN:")
             print(f"   {url}")
+            print(" Halamannya ikut disajikan di situ. Berubah tiap dijalankan.")
             print(bar)
     else:
         print()
