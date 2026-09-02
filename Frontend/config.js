@@ -1,4 +1,3 @@
-// Halaman Vercel berjalan di laptop yang sama dengan backend, jadi ia
-// memanggil alamat lokal itu langsung. Dibiarkan kosong berarti "asal yang
-// sama", yang dipakai saat halaman dibuka dari backend sendiri.
-window.BACKEND_URL = "http://localhost:8000";
+// Dikosongkan berarti "pakai alamat yang sama dengan halaman ini".
+// Halaman disajikan oleh backend sendiri di http://localhost:8000.
+window.BACKEND_URL = "";
