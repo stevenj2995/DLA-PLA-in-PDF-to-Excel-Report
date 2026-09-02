@@ -116,35 +116,49 @@ def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
 
 
 def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
-    """The one advice that is ours, plus a note when there was a choice to make.
+    """The one advice addressed to us, plus a note when others were set aside.
 
-    Merging every page into one bag lets the last advice win, and that is how a
-    Tugure share of 1% once landed on a row that should have carried Astra
-    Buana's 6%. When several advices sit in one file, the one addressed to us is
-    the one taken -- and if that cannot be told apart, nothing is taken at all.
+    Whose advice it is gets checked however many the file holds. Trusting a
+    lone advice without looking is what let files ending in REINS through: each
+    held a single advice belonging to Tugure or Reasuransi Indonesia Utama, and
+    nineteen of their rows reached the sheet as if they were ours.
     """
     sections = _sections(document, profile)
     if not sections:
         return {}, ""
-    if len(sections) == 1:
-        return sections[0], ""
 
     label = profile.owner_label if profile else ""
     names = profile.owner_names if profile else ()
     if not label or not names:
-        raise ValueError(f"berkas memuat {len(sections)} DLA, dan profil "
-                         f"belum tahu mana yang milik kita")
+        if len(sections) == 1:
+            return sections[0], ""
+        raise ValueError(f"berkas memuat {len(sections)} DLA, dan profil belum "
+                         f"tahu mana yang milik kita")
 
-    mine = [s for s in sections
-            if any(n in (s.get(label, "") or "").casefold() for n in names)]
-    others = [s.get(label, "?") for s in sections if s not in mine]
-    if len(mine) != 1:
-        raise ValueError(
-            f"berkas memuat {len(sections)} DLA untuk reasuradur berbeda "
-            f"({', '.join(s.get(label, '?') for s in sections)}), dan "
-            f"{'tidak satu pun' if not mine else f'{len(mine)}'} ditujukan ke kita")
-    return mine[0], (f"berkas memuat {len(sections)} DLA; diambil yang ditujukan ke "
-                     f"{mine[0].get(label)}, sisanya dilewati ({', '.join(others)})")
+    def addressee(section) -> str:
+        return (section.get(label) or "?").strip()
+
+    def is_ours(section) -> bool:
+        return any(n in addressee(section).casefold() for n in names)
+
+    mine = [s for s in sections if is_ours(s)]
+    others = [addressee(s) for s in sections if not is_ours(s)]
+
+    if len(mine) == 1:
+        if not others:
+            return mine[0], ""
+        return mine[0], (f"berkas memuat {len(sections)} DLA; diambil yang ditujukan "
+                         f"ke {addressee(mine[0])}, sisanya dilewati "
+                         f"({', '.join(others)})")
+    if not mine:
+        named = [x for x in others if x != "?"]
+        if not named:
+            raise ValueError(f"tidak ada baris '{label}' di berkas ini, jadi tidak "
+                             f"bisa dipastikan DLA ini ditujukan ke siapa")
+        raise ValueError(f"DLA di berkas ini ditujukan ke {', '.join(named)}, "
+                         f"bukan ke kita")
+    raise ValueError(f"{len(mine)} DLA di berkas ini sama-sama ditujukan ke kita, "
+                     f"tidak bisa ditentukan mana yang dipakai")
 
 
 def read_one(path: Path, profile: Profile) -> FileResult:
