@@ -130,14 +130,17 @@ function fillCompanies(list, drafts) {
   const grid = $("company-grid");
   if (grid.dataset.filled === "1") return;
 
+  const face = (c, sub) =>
+    '<span class="badge">' + esc(initials(c.name)) + "</span>" +
+    '<span class="text"><span class="name">' + esc(c.name) + "</span>" +
+    '<span class="sub">' + sub + "</span></span>";
+
   const cards = list.map((c) =>
     '<button type="button" class="company-card" data-key="' + esc(c.key) + '">' +
-    '<span class="name">' + esc(c.name) + "</span>" +
-    '<span class="sub">Siap dipakai</span></button>').join("");
+    face(c, "Siap dipakai") + "</button>").join("");
   const off = (drafts || []).map((c) =>
-    '<span class="company-card is-off">' +
-    '<span class="name">' + esc(c.name) + "</span>" +
-    '<span class="sub">Belum aktif</span></span>').join("");
+    '<span class="company-card is-off" title="Daftar kolomnya belum ditinjau">' +
+    face(c, "Belum aktif") + "</span>").join("");
 
   grid.innerHTML = (cards + off) ||
     '<div class="company-card is-loading">Belum ada perusahaan yang didukung</div>';
@@ -148,6 +151,11 @@ function fillCompanies(list, drafts) {
 
   if (list.length === 1) pickCompany(list[0].key);
   updateSubmit();
+}
+
+function initials(name) {
+  const letters = String(name || "").replace(/[^A-Za-z]/g, "");
+  return letters.slice(0, 3).toUpperCase() || "?";
 }
 
 function pickCompany(key) {
