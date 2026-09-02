@@ -15,7 +15,7 @@ TAKE = {
 @dataclass(frozen=True)
 class Column:
     header: str
-    source: str          # the label as the document prints it
+    source: str
     take: str = "raw"
 
 
@@ -23,28 +23,26 @@ class Column:
 class Profile:
     key: str
     name: str
-    marks: tuple[str, ...]              # labels that identify this company
+    marks: tuple[str, ...]
     columns: tuple[Column, ...]
-    skip_headings: tuple[str, ...] = ()  # pages that are a different document
-    ignore: tuple[str, ...] = ()         # labels deliberately not carried over
+    skip_headings: tuple[str, ...] = ()
+    ignore: tuple[str, ...] = ()
     bulleted_money: bool = False
     split_shared_lines: bool = False
-    reviewed: bool = True                # confirmed with Steven, column by column
+    reviewed: bool = True
 
     def matches(self, labels) -> bool:
         return all(m in labels for m in self.marks)
 
-
-# JRP -- two documents in one file; only the DLA page is used, the DEBIT NOTE
-# page is ignored. Column list confirmed 2026-09-01.
+# Profile JRP
 JRP = Profile(
     key="jrp",
     name="JRP",
     marks=("Ref No", "Risk Cover", "Appointed Adjuster"),
     skip_headings=("debit note", "credit note"),
-    # the gross and the deductible of the amount block: only the nett is kept
     ignore=("Definite Claim Amount", "Deductible"),
     columns=(
+        # Parameter yang akan diambil saat dibaca
         Column("Ref No", "Ref No"),
         Column("Claim No", "Claim No"),
         Column("Class of Business", "Class of Business"),
@@ -63,7 +61,6 @@ JRP = Profile(
         Column("Place of Loss", "Place of Loss"),
         Column("Cause of Loss", "Cause of Loss"),
         Column("Appointed Adjuster", "Appointed Adjuster"),
-        # the block is named for its heading, the figure taken is the nett
         Column("Currency", "Nett Amount", "currency"),
         Column("Definite Claim Amount", "Nett Amount", "amount"),
         Column("Currency", "Your Share on Nett Loss", "currency"),
@@ -73,13 +70,13 @@ JRP = Profile(
     ),
 )
 
-# Askrindo -- single page. Column list taken from the eighteen parameters Steven
-# listed, plus the currency split.
+# Profile Askrindo
 ASKRINDO = Profile(
     key="askrindo",
     name="Askrindo",
     marks=("No DLA", "Askrindo Share"),
     columns=(
+        # Parameter yang akan diambil saat dibaca
         Column("No DLA", "No DLA"),
         Column("Class of Business", "Class of Business"),
         Column("Type of Policy", "Type of Policy"),
@@ -104,8 +101,7 @@ ASKRINDO = Profile(
     ),
 )
 
-# KMDastur -- single page, amount block written as bulleted children. Columns
-# derived from the document, not yet gone through with Steven.
+# KMDastur
 KMDASTUR = Profile(
     key="kmdastur",
     name="KMDastur",
@@ -113,6 +109,7 @@ KMDASTUR = Profile(
     bulleted_money=True,
     reviewed=False,
     columns=(
+        # Parameter yang akan diambil saat dibaca
         Column("Class of Business", "Class of Business"),
         Column("Policy Number", "Policy Number"),
         Column("Your Reference", "Your Reference"),
@@ -134,19 +131,13 @@ KMDASTUR = Profile(
     ),
 )
 
-# Only JRP is in service. Askrindo and KMDastur above are drafts read off a
-# single document each and have not been gone through with Steven, so they stay
-# out of detection until they have been -- a half-checked profile writing a
-# wrong column is worse than refusing the file.
 ALL = (JRP,)
 DRAFTS = (ASKRINDO, KMDASTUR)
-
 
 def by_key(key: str) -> Profile | None:
     return next((p for p in ALL if p.key == key), None)
 
 
 def detect(labels) -> Profile | None:
-    """The profile whose marker labels are all present in the document."""
     hits = [p for p in ALL if p.matches(labels)]
     return hits[0] if len(hits) == 1 else None

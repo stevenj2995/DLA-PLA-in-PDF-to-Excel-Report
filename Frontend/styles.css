@@ -274,3 +274,16 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
   border: 1px solid var(--line-strong); border-radius: 999px;
   padding: 4px 12px; font-weight: 600; font-size: .86rem; margin-bottom: 10px;
 }
+
+/* ---- alamat backend, dipakai kalau halaman tidak disajikan backend ---- */
+.backend-row {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 16px;
+}
+.backend-row label { display: block; font-weight: 600; margin-bottom: 8px }
+.backend-input { display: flex; gap: 8px }
+.backend-input input { flex: 1; min-width: 0 }
+.backend-input button { white-space: nowrap }
+.backend-row code {
+  background: var(--blue-soft); border-radius: 4px; padding: 1px 5px; font-size: .88em;
+}

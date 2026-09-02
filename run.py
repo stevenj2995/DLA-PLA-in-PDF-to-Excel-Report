@@ -10,6 +10,7 @@ from pathlib import Path
 
 PORT = 8000
 ROOT = Path(__file__).parent
+VERCEL_SITE = "https://dla-pla-pdf-to-excel-report.vercel.app"
 
 
 def check_setup() -> bool:
@@ -104,11 +105,15 @@ def main() -> int:
         else:
             print()
             print(bar)
-            print(" ALAMAT UNTUK DEVICE LAIN:")
-            print(f"   {url}")
+            print(" LEWAT VERCEL - klik ini, alamatnya sudah terisi:")
+            print(f"   {VERCEL_SITE}/?api={url}")
             print()
-            print(" Halamannya ikut disajikan di alamat itu, tinggal dibuka.")
-            print(" Alamat ini berubah setiap kali run.py dijalankan.")
+            print(" Halaman Vercel tidak bisa memanggil localhost, jadi ia perlu")
+            print(" alamat terowongan di atas. Cukup sekali per sesi: browser")
+            print(" mengingatnya. Alamat berubah tiap run.py dijalankan ulang.")
+            print()
+            print(" Atau langsung tanpa Vercel:")
+            print(f"   {url}")
             print(bar)
     else:
         print()
