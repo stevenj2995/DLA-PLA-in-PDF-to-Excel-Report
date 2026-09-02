@@ -65,15 +65,27 @@ def _sections_merged(document) -> dict[str, str]:
     return found
 
 
+def _starts_advice(page, profile: Profile | None) -> bool:
+    """Whether this page begins a new advice.
+
+    The document's own title is the boundary. Counting pages and halving them
+    would give the same answer on the files seen so far, but only because each
+    advice happens to be one page plus one debit note -- an advice that runs to
+    two pages, or one issued without a debit note, would throw that off.
+    """
+    if not profile or not profile.title:
+        return True
+    return any(profile.title in h.casefold() for h in page.headings())
+
+
 def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
     """Each advice in the file as its own set of label:value pairs.
 
     One file can carry the same DLA reissued for every reinsurer on the risk,
-    each with a different share. A page that does not carry the owner label is
-    treated as a continuation of the advice above it.
+    each with a different share. Pages after a title belong to the advice that
+    title opened, so an advice spanning several pages still comes back whole.
     """
     skip = profile.skip_headings if profile else ()
-    owner = profile.owner_label if profile else ""
     out: list[dict[str, str]] = []
     for page in document.pages:
         if any(h.casefold() in skip for h in page.headings()):
@@ -85,7 +97,7 @@ def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
         )
         if not found:
             continue
-        if out and (not owner or owner not in found):
+        if out and not _starts_advice(page, profile):
             out[-1].update(found)
         else:
             out.append(found)
