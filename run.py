@@ -37,6 +37,21 @@ def check_setup() -> bool:
     return True
 
 
+_CLOUDFLARED_CANDIDATES = (
+    r"C:\Program Files (x86)\cloudflared\cloudflared.exe",
+    r"C:\Program Files\cloudflared\cloudflared.exe",
+)
+
+
+def find_cloudflared() -> str | None:
+    """winget puts it on the machine PATH, which a terminal opened before the
+    install will not have picked up yet."""
+    found = shutil.which("cloudflared")
+    if found:
+        return found
+    return next((p for p in _CLOUDFLARED_CANDIDATES if Path(p).exists()), None)
+
+
 def start_server() -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "Backend.server:app",
@@ -87,15 +102,11 @@ def main() -> int:
     bar = "=" * 62
     print()
     print(bar)
-    print(" BUKA DI BROWSER, salah satu:")
+    print(" BUKA DI BROWSER:")
     print(f"   http://localhost:{PORT}")
-    print(f"   {VERCEL_SITE}")
-    print()
-    print(" Keduanya memakai backend ini. Yang Vercel hanya jalan di laptop")
-    print(" ini, sebab ia memanggil localhost.")
     print(bar)
 
-    exe = shutil.which("cloudflared")
+    exe = find_cloudflared()
     tunnel = None
     if exe:
         print()
@@ -106,9 +117,14 @@ def main() -> int:
         else:
             print()
             print(bar)
-            print(" ALAMAT UNTUK DEVICE LAIN:")
+            print(" LEWAT VERCEL - klik tautan ini:")
+            print(f"   {VERCEL_SITE}/?api={url}")
+            print()
+            print(" Alamat terowongan berubah tiap run.py dijalankan, jadi pakai")
+            print(" tautan di atas lagi setiap kali. Browser mengingatnya.")
+            print()
+            print(" Tanpa Vercel, halaman yang sama juga ada di:")
             print(f"   {url}")
-            print(" Halamannya ikut disajikan di situ. Berubah tiap dijalankan.")
             print(bar)
     else:
         print()
