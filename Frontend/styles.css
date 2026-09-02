@@ -249,15 +249,39 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
   .stats { grid-template-columns: repeat(2, 1fr) }
 }
 
-/* ---- pilihan radio langkah 2 ---- */
-.choice-list { display: grid; gap: 10px; margin-top: 12px }
-.choice {
-  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
-  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px;
+/* ---- kartu pilihan perusahaan ---- */
+.company-grid {
+  display: grid; gap: 10px; margin-top: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
 }
-.choice:hover { border-color: var(--line-strong); background: var(--blue-soft) }
-.choice input { margin-top: 3px; accent-color: var(--blue) }
-.choice-sub { display: block; color: var(--text-soft); font-size: .86rem; margin-top: 2px }
+.company-card {
+  position: relative; display: flex; flex-direction: column; gap: 3px;
+  padding: 14px 16px; cursor: pointer; text-align: left;
+  font: inherit; color: var(--text);
+  background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.company-card:hover:not(.is-off) { border-color: var(--blue); background: var(--blue-soft) }
+.company-card:focus-visible { outline: none; box-shadow: var(--ring) }
+.company-card .name { font-weight: 700; font-size: 1rem; letter-spacing: -.01em }
+.company-card .sub { font-size: .8rem; color: var(--text-soft) }
+
+.company-card.is-on {
+  border-color: var(--blue); background: var(--blue-soft);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.company-card.is-on .sub { color: var(--blue-dark); font-weight: 600 }
+.company-card.is-on::after {
+  content: "✓"; position: absolute; top: 10px; right: 12px;
+  color: var(--blue); font-weight: 700;
+}
+.company-card.is-off {
+  cursor: not-allowed; background: transparent; border-style: dashed;
+  color: var(--text-faint);
+}
+.company-card.is-off .sub { color: var(--text-faint) }
+.company-card.is-loading { color: var(--text-faint); cursor: default }
 
 /* ---- pratinjau baris hasil ---- */
 .preview-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm) }

@@ -32,47 +32,37 @@
     <div class="step">
       <div class="step-rail"><span class="step-num">1</span></div>
       <div class="step-body">
-        <h2 class="step-title">Upload DLA</h2>
-        <p class="upload-note">
-          Satu batch berisi <strong>satu perusahaan</strong>. Perusahaannya dikenali
-          otomatis dari isi dokumen. PDF dihapus dari server begitu Excel selesai dibuat.
+        <h2 class="step-title">Pilih perusahaan</h2>
+        <p class="field-note">
+          Satu batch berisi satu perusahaan. Aturan kolomnya mengikuti pilihan ini.
         </p>
-
-        <div id="dropzone" class="dropzone" tabindex="0" role="button"
-             aria-label="Pilih berkas PDF">
-          <span class="dropzone-icon">📄</span>
-          <span class="dropzone-text">
-            <span class="dropzone-main">Letakkan PDF di sini</span>
-            <span class="dropzone-sub">atau klik untuk memilih dari komputer</span>
-          </span>
+        <div id="company-grid" class="company-grid">
+          <div class="company-card is-loading">Memuat…</div>
         </div>
-        <input type="file" id="file-input" accept="application/pdf,.pdf" multiple hidden>
-
-        <ul id="file-list" class="file-list"></ul>
+        <input type="hidden" id="company" value="">
       </div>
     </div>
 
     <div class="step">
       <div class="step-rail"><span class="step-num">2</span></div>
       <div class="step-body">
-        <h2 class="step-title">Kalau ada yang parameternya beda</h2>
-        <p class="field-note">
-          Satu perusahaan seharusnya seragam. Kalau ternyata ada yang menyimpang,
-          itu tanda ada berkas yang salah masuk atau gagal terbaca.
+        <h2 class="step-title">Upload DLA</h2>
+        <p class="upload-note">
+          Terima <strong>ZIP</strong> berisi banyak DLA, atau <strong>PDF</strong>
+          langsung — boleh dicampur. Semuanya dihapus begitu Excel selesai dibuat.
         </p>
-        <div class="choice-list">
-          <label class="choice">
-            <input type="radio" name="mismatch" value="merge" checked>
-            <span><strong>Gabungkan semua</strong>
-              <span class="choice-sub">Parameter tambahan jadi kolom baru, yang tidak ada
-              dikosongkan. Tidak ada data yang hilang.</span></span>
-          </label>
-          <label class="choice">
-            <input type="radio" name="mismatch" value="reject">
-            <span><strong>Tolak batch-nya</strong>
-              <span class="choice-sub">Proses dihentikan supaya bisa Anda periksa dulu.</span></span>
-          </label>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button"
+             aria-label="Pilih berkas ZIP atau PDF">
+          <span class="dropzone-icon">📦</span>
+          <span class="dropzone-text">
+            <span class="dropzone-main">Letakkan ZIP atau PDF di sini</span>
+            <span class="dropzone-sub">atau klik untuk memilih dari komputer</span>
+          </span>
         </div>
+        <input type="file" id="file-input" accept=".zip,application/zip,application/pdf,.pdf" multiple hidden>
+
+        <ul id="file-list" class="file-list"></ul>
 
         <div id="code-row" class="hidden">
           <label class="step-title" for="code">Kode akses</label>
@@ -87,7 +77,7 @@
         <h2 class="step-title">Proses</h2>
         <div class="action-row">
           <button id="submit" disabled>Mulai</button>
-          <p id="submit-hint" class="field-note">Pilih minimal satu PDF.</p>
+          <p id="submit-hint" class="field-note">Pilih perusahaan dan berkasnya dulu.</p>
         </div>
         <div id="loading" class="loading hidden">
           <span class="spinner"></span><span>Membaca dokumen…</span>
@@ -103,16 +93,17 @@
     <h2 class="section-heading">Hasil</h2>
     <div id="stats" class="stats"></div>
     <div id="block-notes"></div>
+    <div id="block-decision"></div>
     <div id="block-excel"></div>
     <div id="block-preview"></div>
     <div id="block-scanned"></div>
     <div id="block-deviating"></div>
     <div id="block-skipped"></div>
 
-    <div class="panel panel-cleanup">
+    <div id="cleanup" class="panel panel-cleanup">
       <h3 class="panel-title">Selesai &amp; hapus data</h3>
       <div class="notice notice-amber">
-        <strong>Excel hasil masih tersimpan sementara di server.</strong>
+        <strong>Excel hasil masih tersimpan sementara.</strong>
         <p>Unduh dulu berkasnya, lalu tekan tombol di bawah untuk menghapusnya
            saat itu juga. PDF yang Anda unggah <strong>sudah dihapus</strong> sejak
            Excel selesai dibuat. Kalau tombol ini tidak ditekan, semuanya tetap

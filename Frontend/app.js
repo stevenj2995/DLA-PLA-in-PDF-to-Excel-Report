@@ -29,7 +29,7 @@ function humanSize(b) {
 }
 
 // ---- backend ----
-let limits = { files: 250, size: 15 };
+let limits = { files: 250, size: 15, zip: 200 };
 let needsCode = false;
 
 async function checkBackend() {
@@ -39,13 +39,14 @@ async function checkBackend() {
     if (!r.ok) throw new Error("status " + r.status);
     const d = await r.json();
 
-    limits = { files: d.max_files, size: d.max_file_mb };
+    limits = { files: d.max_files, size: d.max_file_mb, zip: d.max_zip_mb };
     if (d.session_minutes) {
       document.querySelectorAll(".session-minutes")
         .forEach((el) => { el.textContent = d.session_minutes; });
     }
     needsCode = Boolean(d.needs_code);
     $("code-row").classList.toggle("hidden", !needsCode);
+    fillCompanies(d.companies || [], d.drafts || []);
 
     pill.className = "status-pill status-live";
     text.textContent = "Siap";
@@ -86,9 +87,13 @@ fileInput.addEventListener("change", () => { addFiles(fileInput.files); fileInpu
 function addFiles(list) {
   const rejected = [];
   for (const f of list) {
-    if (!f.name.toLowerCase().endsWith(".pdf")) { rejected.push(f.name + " (bukan PDF)"); continue; }
-    if (f.size > limits.size * 1024 * 1024) {
-      rejected.push(f.name + " (lebih dari " + limits.size + " MB)"); continue;
+    const isZip = f.name.toLowerCase().endsWith(".zip");
+    if (!isZip && !f.name.toLowerCase().endsWith(".pdf")) {
+      rejected.push(f.name + " (bukan ZIP atau PDF)"); continue;
+    }
+    const ceiling = isZip ? limits.zip : limits.size;
+    if (f.size > ceiling * 1024 * 1024) {
+      rejected.push(f.name + " (lebih dari " + ceiling + " MB)"); continue;
     }
     if (chosen.some((x) => x.name === f.name && x.size === f.size)) continue;
     if (chosen.length >= limits.files) {
@@ -115,15 +120,52 @@ function renderFileList() {
 
 // ---- tombol ----
 const submit = $("submit"), submitHint = $("submit-hint"), code = $("code");
+const company = $("company");
 code.addEventListener("input", updateSubmit);
+
+// Drawn as cards rather than a dropdown: there are only a handful of companies,
+// and the ones not in service yet are worth showing as such instead of being
+// invisible.
+function fillCompanies(list, drafts) {
+  const grid = $("company-grid");
+  if (grid.dataset.filled === "1") return;
+
+  const cards = list.map((c) =>
+    '<button type="button" class="company-card" data-key="' + esc(c.key) + '">' +
+    '<span class="name">' + esc(c.name) + "</span>" +
+    '<span class="sub">Siap dipakai</span></button>').join("");
+  const off = (drafts || []).map((c) =>
+    '<span class="company-card is-off">' +
+    '<span class="name">' + esc(c.name) + "</span>" +
+    '<span class="sub">Belum aktif</span></span>').join("");
+
+  grid.innerHTML = (cards + off) ||
+    '<div class="company-card is-loading">Belum ada perusahaan yang didukung</div>';
+  grid.dataset.filled = "1";
+
+  grid.querySelectorAll(".company-card[data-key]").forEach((card) =>
+    card.addEventListener("click", () => pickCompany(card.dataset.key)));
+
+  if (list.length === 1) pickCompany(list[0].key);
+  updateSubmit();
+}
+
+function pickCompany(key) {
+  company.value = key;
+  $("company-grid").querySelectorAll(".company-card[data-key]").forEach((card) =>
+    card.classList.toggle("is-on", card.dataset.key === key));
+  updateSubmit();
+}
 
 function updateSubmit() {
   const hasFiles = chosen.length > 0;
+  const hasCompany = Boolean(company.value);
   const hasCode = !needsCode || code.value.trim().length > 0;
-  submit.disabled = !(hasFiles && hasCode);
-  if (!hasFiles) submitHint.textContent = "Pilih minimal satu PDF.";
+  submit.disabled = !(hasFiles && hasCompany && hasCode);
+  if (!hasCompany) submitHint.textContent = "Pilih perusahaannya dulu.";
+  else if (!hasFiles) submitHint.textContent = "Pilih berkas ZIP atau PDF.";
   else if (!hasCode) submitHint.textContent = "Masukkan kode akses.";
-  else submitHint.textContent = chosen.length + " PDF siap diproses";
+  else submitHint.textContent = chosen.length + " berkas siap diproses";
 }
 
 function showError(m) { const b = $("error"); b.textContent = m; b.classList.remove("hidden"); }
@@ -138,7 +180,7 @@ submit.addEventListener("click", async () => {
 
   const fd = new FormData();
   if (needsCode) fd.append("code", code.value.trim());
-  fd.append("on_mismatch", document.querySelector('input[name="mismatch"]:checked').value);
+  fd.append("company", company.value);
   chosen.forEach((f) => fd.append("files", f, f.name));
 
   try {
@@ -200,6 +242,13 @@ function renderResults(d) {
       '">&#8595; Unduh Excel</a></div>'
     : (d.rejected ? "" : '<div class="notice notice-amber">Tidak ada Excel yang dihasilkan.</div>');
 
+  $("block-decision").innerHTML = d.needs_decision ? renderDecision(d) : "";
+  if (d.needs_decision) {
+    $("decide-merge").addEventListener("click", () => decide("merge"));
+    $("decide-reject").addEventListener("click", () => decide("reject"));
+  }
+  $("cleanup").classList.toggle("hidden", !d.excel);
+
   $("block-preview").innerHTML = renderPreview(d);
 
   $("block-scanned").innerHTML = (d.scanned || []).length
@@ -226,6 +275,46 @@ function renderResults(d) {
 
   $("results").classList.remove("hidden");
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Only ever shown when a batch actually turned out uneven. One company's DLAs
+// are supposed to be identical, so this is a signal that something is wrong
+// with the batch rather than a setting to pick beforehand.
+function renderDecision(d) {
+  const files = (d.deviating || []).map((f) =>
+    "<li><strong>" + esc(f.file) + "</strong>" +
+    (f.missing.length ? "<br>tidak ada: " + f.missing.map(esc).join(", ") : "") +
+    (f.extra.length ? "<br>tambahan: " + f.extra.map(esc).join(", ") : "") +
+    "</li>").join("");
+  return '<div class="notice notice-amber"><strong>' + d.summary.deviating +
+    " dari " + d.summary.rows + " berkas parameternya tidak sama dengan yang lain." +
+    "</strong><p>Satu perusahaan seharusnya seragam, jadi ini tanda ada berkas " +
+    "yang salah masuk atau gagal terbaca:</p><ul>" + files + "</ul></div>" +
+    '<div class="action-row">' +
+    '<button id="decide-merge">Gabungkan semua &amp; buat Excel</button>' +
+    '<button id="decide-reject" class="btn-danger">Batalkan batch ini</button>' +
+    "</div>" +
+    '<p class="field-note">Gabungkan: parameter tambahan jadi kolom baru, yang ' +
+    "tidak ada dikosongkan, tidak ada data yang hilang. Batalkan: tidak ada " +
+    "Excel yang dibuat dan datanya langsung dihapus.</p>";
+}
+
+async function decide(keep) {
+  if (!currentSession) return;
+  $("block-decision").innerHTML = '<div class="loading"><span class="spinner"></span>' +
+    "<span>Menyelesaikan…</span></div>";
+  const fd = new FormData();
+  fd.append("keep", keep);
+  try {
+    const r = await fetch(API + "/api/decide/" + encodeURIComponent(currentSession),
+                          { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || "Gagal (HTTP " + r.status + ")");
+    renderResults(d);
+  } catch (e) {
+    $("block-decision").innerHTML = "";
+    showError(e.message);
+  }
 }
 
 function renderPreview(d) {

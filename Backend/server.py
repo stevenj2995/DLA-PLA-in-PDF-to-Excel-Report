@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -39,6 +40,109 @@ def _drop_expired() -> None:
             shutil.rmtree(data["workspace"], ignore_errors=True)
 
 
+def _unpack_zip(archive: Path, into: Path) -> list[Path]:
+    """PDFs out of an archive, ignoring how the sender organised it.
+
+    Only the bare file name is used, never the path recorded inside the archive,
+    so an entry named ../../something cannot write outside the workspace. Sizes
+    are checked against the declared header before anything is written, which is
+    what stops a small archive unpacking into an enormous one.
+    """
+    out: list[Path] = []
+    total = 0
+    with zipfile.ZipFile(archive) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = Path(info.filename).name
+            if not name.lower().endswith(".pdf") or name.startswith("."):
+                continue
+            if len(out) >= settings.MAX_FILES:
+                break
+            total += info.file_size
+            if info.file_size > settings.MAX_FILE_BYTES or total > settings.MAX_EXTRACTED_BYTES:
+                raise HTTPException(status_code=400,
+                                    detail="Isi ZIP melebihi batas ukuran.")
+            target = into / name
+            stem, suffix, n = target.stem, target.suffix, 2
+            while target.exists():
+                target = into / f"{stem} ({n}){suffix}"
+                n += 1
+            with zf.open(info) as src, target.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+            out.append(target)
+    return out
+
+
+async def _collect(files: list[UploadFile], into: Path) -> list[Path]:
+    saved: list[Path] = []
+    total = 0
+    for item in files:
+        name = Path(item.filename or "").name
+        lowered = name.lower()
+        if not (lowered.endswith(".pdf") or lowered.endswith(".zip")):
+            continue
+        body = await item.read()
+        total += len(body)
+        ceiling = settings.MAX_ZIP_BYTES if lowered.endswith(".zip") else settings.MAX_FILE_BYTES
+        if len(body) > ceiling or total > settings.MAX_TOTAL_BYTES:
+            raise HTTPException(status_code=400, detail="Ukuran unggahan melebihi batas.")
+
+        if lowered.endswith(".zip"):
+            archive = into / name
+            archive.write_bytes(body)
+            try:
+                saved.extend(_unpack_zip(archive, into))
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400,
+                                    detail=f"{name} bukan berkas ZIP yang sah.") from None
+            finally:
+                archive.unlink(missing_ok=True)
+        else:
+            target = into / name
+            target.write_bytes(body)
+            saved.append(target)
+    return saved[: settings.MAX_FILES]
+
+
+def _summary(batch) -> dict:
+    return {
+        "pdfs": len(batch.files),
+        "rows": len(batch.rows),
+        "columns": len(batch.headers),
+        "skipped": len(batch.skipped),
+        "deviating": len(batch.deviating),
+    }
+
+
+def _report(batch, session: str, file_id: str | None, out: Path | None) -> dict:
+    return {
+        "session": session,
+        "company": batch.profile.name if batch.profile else None,
+        "rejected": batch.rejected,
+        "needs_decision": False,
+        "summary": _summary(batch),
+        "headers": batch.headers,
+        "preview": batch.rows[:5],
+        "notes": batch.notes,
+        "skipped": [{"file": f.name, "reason": f.reason} for f in batch.skipped],
+        "scanned": [f.name for f in batch.scanned],
+        "deviating": [{"file": f.name, "missing": f.missing, "extra": sorted(f.extra)}
+                      for f in batch.deviating],
+        "excel": ({"id": file_id, "file_name": out.name, "rows": len(batch.rows),
+                   "columns": len(batch.headers)} if out else None),
+    }
+
+
+def _finish_batch(batch, session: str, workspace: Path) -> dict:
+    out = pipeline.to_excel(batch, workspace / "out")
+    file_id = uuid.uuid4().hex if out else None
+    with _lock:
+        _sessions[session] = {"time": time.time(), "workspace": workspace,
+                              "files": {file_id: out} if out else {}, "batch": None}
+    return _report(batch, session, file_id, out)
+
+
 @app.get("/api/status")
 def status():
     _drop_expired()
@@ -46,54 +150,39 @@ def status():
         "ok": True,
         "max_files": settings.MAX_FILES,
         "max_file_mb": settings.MAX_FILE_BYTES // (1024 * 1024),
+        "max_zip_mb": settings.MAX_ZIP_BYTES // (1024 * 1024),
         "session_minutes": settings.SESSION_MINUTES,
         "needs_code": bool(settings.ACCESS_CODE),
         "ocr": ocr_available(),
         "companies": [{"key": p.key, "name": p.name} for p in profiles.ALL],
+        "drafts": [{"key": p.key, "name": p.name} for p in profiles.DRAFTS],
     }
 
 
 @app.post("/api/process")
 async def process(
     files: list[UploadFile] = File(...),
+    company: str = Form(""),
     code: str = Form(""),
-    on_mismatch: str = Form("merge"),
 ):
     if settings.ACCESS_CODE and not hmac.compare_digest(code.strip(), settings.ACCESS_CODE):
         raise HTTPException(status_code=403, detail="Kode akses salah.")
-    if not files:
-        raise HTTPException(status_code=400, detail="Tidak ada berkas yang diunggah.")
-    if len(files) > settings.MAX_FILES:
-        raise HTTPException(status_code=400,
-                            detail=f"Maksimal {settings.MAX_FILES} PDF sekali proses.")
+    if company and profiles.by_key(company) is None:
+        raise HTTPException(status_code=400, detail="Perusahaan tidak dikenali.")
 
     _drop_expired()
     workspace = Path(tempfile.mkdtemp(prefix="dla_"))
     incoming = workspace / "in"
     incoming.mkdir(parents=True, exist_ok=True)
 
-    total = 0
-    saved: list[Path] = []
     try:
-        for item in files:
-            if not (item.filename or "").lower().endswith(".pdf"):
-                continue
-            body = await item.read()
-            total += len(body)
-            if len(body) > settings.MAX_FILE_BYTES or total > settings.MAX_TOTAL_BYTES:
-                shutil.rmtree(workspace, ignore_errors=True)
-                raise HTTPException(status_code=400, detail="Ukuran unggahan melebihi batas.")
-            target = incoming / Path(item.filename).name
-            target.write_bytes(body)
-            saved.append(target)
-
+        saved = await _collect(files, incoming)
         if not saved:
-            shutil.rmtree(workspace, ignore_errors=True)
-            raise HTTPException(status_code=400, detail="Tidak ada berkas PDF yang sah.")
-
-        batch = pipeline.run(saved, on_mismatch=on_mismatch)
-        out = pipeline.to_excel(batch, workspace / "out")
+            raise HTTPException(status_code=400,
+                                detail="Tidak ada PDF di dalam yang diunggah.")
+        batch = pipeline.run(saved, profile_key=company or None)
     except HTTPException:
+        shutil.rmtree(workspace, ignore_errors=True)
         raise
     except Exception as e:
         shutil.rmtree(workspace, ignore_errors=True)
@@ -103,35 +192,41 @@ async def process(
         shutil.rmtree(incoming, ignore_errors=True)
 
     session = uuid.uuid4().hex
-    file_id = uuid.uuid4().hex
-    with _lock:
-        _sessions[session] = {
-            "time": time.time(),
-            "workspace": workspace,
-            "files": {file_id: out} if out else {},
-        }
 
-    return {
-        "session": session,
-        "company": batch.profile.name if batch.profile else None,
-        "rejected": batch.rejected,
-        "summary": {
-            "pdfs": len(batch.files),
-            "rows": len(batch.rows),
-            "columns": len(batch.headers),
-            "skipped": len(batch.skipped),
-            "deviating": len(batch.deviating),
-        },
-        "headers": batch.headers,
-        "preview": batch.rows[:5],
-        "notes": batch.notes,
-        "skipped": [{"file": f.name, "reason": f.reason} for f in batch.skipped],
-        "scanned": [f.name for f in batch.scanned],
-        "deviating": [{"file": f.name, "missing": f.missing,
-                       "extra": sorted(f.extra)} for f in batch.deviating],
-        "excel": ({"id": file_id, "file_name": out.name, "rows": len(batch.rows),
-                   "columns": len(batch.headers)} if out else None),
-    }
+    # A batch of one company should be uniform. When it is not, that is a signal
+    # worth stopping on rather than a variation to absorb quietly, so the choice
+    # is put to the person only at the moment it actually applies.
+    if batch.rows and batch.deviating:
+        with _lock:
+            _sessions[session] = {"time": time.time(), "workspace": workspace,
+                                  "files": {}, "batch": batch}
+        answer = _report(batch, session, None, None)
+        answer["needs_decision"] = True
+        return answer
+
+    return _finish_batch(batch, session, workspace)
+
+
+@app.post("/api/decide/{session}")
+def decide(session: str, keep: str = Form("merge")):
+    _drop_expired()
+    data = _sessions.get(session)
+    if not data or not data.get("batch"):
+        raise HTTPException(status_code=404, detail="Sesi sudah tidak tersedia.")
+    batch = data["batch"]
+    workspace: Path = data["workspace"]
+
+    if keep == "reject":
+        shutil.rmtree(workspace, ignore_errors=True)
+        _sessions.pop(session, None)
+        batch.rejected = (
+            f"{len(batch.deviating)} dari {len(batch.done)} PDF parameternya tidak "
+            f"sama dengan yang lain. Batch dibatalkan sesuai pilihan Anda, dan "
+            f"tidak ada Excel yang dibuat.")
+        batch.rows = []
+        return _report(batch, session, None, None)
+
+    return _finish_batch(batch, session, workspace)
 
 
 @app.get("/api/download/{session}/{file_id}")
@@ -171,8 +266,7 @@ def finish(session: str):
 
 
 # The page is served by the backend itself, so it always talks to the API on its
-# own origin -- nothing to configure, and no CORS involved. Mounted last so the
-# /api routes above keep priority.
+# own origin. Mounted last so the /api routes above keep priority.
 FRONTEND = Path(__file__).resolve().parent.parent / "Frontend"
 if FRONTEND.is_dir():
     app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")

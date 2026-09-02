@@ -93,14 +93,12 @@ def read_one(path: Path, profile: Profile) -> FileResult:
     return result
 
 
-def run(paths, *, profile_key: str | None = None, on_mismatch: str = "merge",
-        progress=None) -> BatchResult:
+def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
     """Read a batch of one company's DLAs into a single sheet.
 
-    on_mismatch decides what happens when a document does not carry exactly the
-    parameters the profile expects: 'merge' keeps going, adding any unexpected
-    label as a further column and leaving blanks where one is absent, while
-    'reject' refuses the whole batch so it can be looked at.
+    Documents that do not carry exactly the parameters the profile expects are
+    still read, and any unexpected label becomes a further column. Whether that
+    is acceptable is not decided here -- the caller sees `deviating` and asks.
     """
     paths = [Path(p) for p in paths]
     batch = BatchResult()
@@ -119,14 +117,6 @@ def run(paths, *, profile_key: str | None = None, on_mismatch: str = "merge",
 
     if not batch.done:
         batch.rejected = "Tidak ada satu pun PDF yang bisa dibaca."
-        return batch
-
-    if on_mismatch == "reject" and batch.deviating:
-        first = batch.deviating[0]
-        batch.rejected = (
-            f"{len(batch.deviating)} dari {len(batch.done)} PDF parameternya tidak "
-            f"sama dengan yang lain, contohnya {first.name}. Batch ditolak sesuai "
-            f"pilihan Anda.")
         return batch
 
     extra_headers: list[str] = []
