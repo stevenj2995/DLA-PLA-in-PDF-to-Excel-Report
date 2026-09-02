@@ -42,6 +42,18 @@ RE_LETTER_CLOSE = re.compile(
     r"^[A-Z][A-Za-z .]{2,24},\s+(?:\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},\s+\d{4})\s*$")
 
 
+def is_label(text: str) -> bool:
+    """Guards against OCR noise becoming a column.
+
+    Scanning a letterhead throws up things like 'a -1-3 : .*-.-*:." Pbe', which
+    satisfies the shape of a pair but is not a label. A real one is mostly
+    letters -- 'To', 'PLA No', 'Loss Amount 100%' all pass this.
+    """
+    letters = sum(c.isalpha() for c in text)
+    solid = len(text.replace(" ", ""))
+    return letters >= 2 and solid > 0 and letters / solid >= 0.4
+
+
 def is_junk(line: str) -> bool:
     return bool(RE_GLYPH.match(line) or RE_SIGN_DATE.match(line) or RE_JUNK.search(line))
 
@@ -78,6 +90,9 @@ def pairs(lines: list[str], *, split_shared_lines: bool = False,
             continue
 
         label = " ".join(pair.group("label").split())
+        if not is_label(label):
+            last = None
+            continue
         value = pair.group("value").strip()
         if split_shared_lines:
             second = RE_SECOND_PAIR.search(" " + value)

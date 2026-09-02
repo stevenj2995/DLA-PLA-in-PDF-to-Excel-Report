@@ -10,8 +10,10 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import pipeline, profiles, settings
+from .extract.pdf_reader import ocr_available
 
 ORIGIN_PATTERN = r"https://[\w-]+\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?"
 
@@ -44,6 +46,7 @@ def status():
         "max_file_mb": settings.MAX_FILE_BYTES // (1024 * 1024),
         "session_minutes": settings.SESSION_MINUTES,
         "needs_code": bool(settings.ACCESS_CODE),
+        "ocr": ocr_available(),
         "companies": [{"key": p.key, "name": p.name} for p in profiles.ALL],
     }
 
@@ -121,6 +124,7 @@ async def process(
         "preview": batch.rows[:5],
         "notes": batch.notes,
         "skipped": [{"file": f.name, "reason": f.reason} for f in batch.skipped],
+        "scanned": [f.name for f in batch.scanned],
         "deviating": [{"file": f.name, "missing": f.missing,
                        "extra": sorted(f.extra)} for f in batch.deviating],
         "excel": ({"id": file_id, "file_name": out.name, "rows": len(batch.rows),
@@ -162,3 +166,11 @@ def finish(session: str):
                     "Sebagian berkas belum bisa dihapus; akan terhapus otomatis "
                     "dalam beberapa menit."),
     }
+
+
+# The page is served by the backend itself, so it always talks to the API on its
+# own origin -- nothing to configure, and no CORS involved. Mounted last so the
+# /api routes above keep priority.
+FRONTEND = Path(__file__).resolve().parent.parent / "Frontend"
+if FRONTEND.is_dir():
+    app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")

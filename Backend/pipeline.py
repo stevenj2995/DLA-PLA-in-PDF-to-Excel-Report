@@ -16,6 +16,7 @@ class FileResult:
     ok: bool = False
     reason: str = ""
     values: list[str] = field(default_factory=list)
+    from_ocr: bool = False
     missing: list[str] = field(default_factory=list)   # columns the letter lacks
     extra: dict[str, str] = field(default_factory=dict)  # labels the profile ignores
 
@@ -46,14 +47,17 @@ class BatchResult:
     def deviating(self) -> list[FileResult]:
         return [f for f in self.files if f.ok and (f.missing or f.extra)]
 
+    @property
+    def scanned(self) -> list[FileResult]:
+        return [f for f in self.files if f.ok and f.from_ocr]
+
 
 def _labels_of(document, profile: Profile | None) -> dict[str, str]:
     """Every label:value in the document, minus pages that are another document."""
     skip = profile.skip_headings if profile else ()
     found: dict[str, str] = {}
     for page in document.pages:
-        heading = page.heading.strip().casefold()
-        if any(heading == s for s in skip):
+        if any(h.casefold() in skip for h in page.headings()):
             continue
         found.update(parser.pairs(
             page.lines,
@@ -74,6 +78,7 @@ def read_one(path: Path, profile: Profile) -> FileResult:
                          "pindaian, perlu OCR")
         return result
 
+    result.from_ocr = document.used_ocr
     found = _labels_of(document, profile)
     used = {c.source for c in profile.columns} | set(profile.ignore)
     for column in profile.columns:
@@ -138,6 +143,11 @@ def run(paths, *, profile_key: str | None = None, on_mismatch: str = "merge",
         batch.notes.append(
             f"{len(extra_headers)} parameter di luar profil {profile.name} ikut "
             f"dimasukkan sebagai kolom tambahan: {', '.join(extra_headers)}.")
+    if batch.scanned:
+        batch.notes.append(
+            f"{len(batch.scanned)} PDF tidak punya lapisan teks dan dibaca lewat OCR. "
+            f"Huruf dan angkanya bisa salah baca tanpa terlihat keliru, jadi mohon "
+            f"dicocokkan dengan dokumen aslinya.")
     blank = [f.name for f in batch.done if f.missing]
     if blank:
         batch.notes.append(

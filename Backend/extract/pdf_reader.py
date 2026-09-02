@@ -1,21 +1,63 @@
 from __future__ import annotations
+import io
+import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+
 import fitz
 
+from .. import settings
+
 # Words are grouped into visual lines by their y position. Anything within the
-# same band is one line, left to right -- that is how a DLA reads on paper.
+# same band is one line, left to right -- that is how a DLA reads on paper. The
+# tolerance is in PDF points, so it is scaled up when reading a rendered image.
 LINE_TOLERANCE = 3.0
+
+BORDER_ARTEFACTS = {"|", "!", "¦", "_", "—", "–", "l|", "||"}
+
+_TESSERACT_CANDIDATES = (
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"),
+)
+
+
+def find_tesseract() -> str | None:
+    if settings.TESSERACT_PATH and Path(settings.TESSERACT_PATH).exists():
+        return settings.TESSERACT_PATH
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    return next((p for p in _TESSERACT_CANDIDATES if p and Path(p).exists()), None)
+
+
+def ocr_available() -> bool:
+    try:
+        import pytesseract  # noqa: F401
+        from PIL import Image  # noqa: F401
+    except ImportError:
+        return False
+    return find_tesseract() is not None
 
 
 @dataclass
 class Page:
     number: int
     lines: list[str] = field(default_factory=list)
+    from_ocr: bool = False
 
     @property
     def heading(self) -> str:
-        return next((l for l in self.lines if l), "")
+        return next((l for l in self.lines if l.strip()), "")
+
+    def headings(self, depth: int = 6) -> list[str]:
+        """The first few printed lines. The document title is not always the
+        first of them: OCR reads the letterhead logo as text, so a scanned JRP
+        page starts with 'jasa raharja putera' where the digital one starts
+        with 'DEBIT NOTE'."""
+        found = [l.strip() for l in self.lines if l.strip()]
+        return found[:depth]
 
     @property
     def text(self) -> str:
@@ -36,24 +78,79 @@ class Document:
     def has_text(self) -> bool:
         return any(l.strip() for p in self.pages for l in p.lines)
 
-
-def _lines_of(page) -> list[str]:
-    bands: dict[int, list[tuple[float, str]]] = {}
-    for x0, y0, _x1, _y1, word, *_ in page.get_text("words"):
-        bands.setdefault(round(y0 / LINE_TOLERANCE), []).append((x0, word))
-    out = []
-    for _, items in sorted(bands.items()):
-        out.append(" ".join(w for _, w in sorted(items)))
-    return out
+    @property
+    def used_ocr(self) -> bool:
+        return any(p.from_ocr for p in self.pages)
 
 
-def read(path: str | Path) -> Document:
+def _bands_to_lines(words, tolerance: float) -> list[str]:
+    """Words to visual lines, grouped by how close their vertical centres are.
+
+    Fixed bins were tried first and are not good enough: a word whose centre
+    lands near a bin edge is thrown into the next line, which split labels away
+    from their values on OCR pages.
+    """
+    lines: list[list[tuple[float, str]]] = []
+    anchor = None
+    for x, y, word in sorted(words, key=lambda w: w[1]):
+        if anchor is None or abs(y - anchor) > tolerance:
+            lines.append([])
+            anchor = y
+        lines[-1].append((x, word))
+    return [" ".join(w for _, w in sorted(group)) for group in lines]
+
+
+def _printed_lines(page) -> list[str]:
+    words = [(x0, y0, w) for x0, y0, _x1, _y1, w, *_ in page.get_text("words")]
+    return _bands_to_lines(words, LINE_TOLERANCE)
+
+
+def _scanned_lines(page, exe: str) -> list[str]:
+    """Render the page and read it with Tesseract, keeping word positions so the
+    lines come out the same shape as a printed page would give."""
+    import pytesseract
+    from PIL import Image
+
+    pytesseract.pytesseract.tesseract_cmd = exe
+    dpi = settings.OCR_DPI
+    pix = page.get_pixmap(dpi=dpi)
+    image = Image.open(io.BytesIO(pix.tobytes("png")))
+    data = pytesseract.image_to_data(image, lang=settings.OCR_LANGUAGES,
+                                     config=f"--psm {settings.OCR_PSM}",
+                                     output_type=pytesseract.Output.DICT)
+    # Group by the middle of each word, not its top edge. A colon or a dash sits
+    # in the middle of the line, so its box starts well below the letters around
+    # it and banding by the top edge drops it into the following line -- which
+    # left every label separated from its value by a line holding just ":".
+    words = []
+    for i, text in enumerate(data["text"]):
+        word = (text or "").strip()
+        # a rule or table border comes back as a lone bar, and it lands inside
+        # the value next to it: 'Cause of Loss' read as '| Mechanical - Breakdown'
+        if not word or word in BORDER_ARTEFACTS:
+            continue
+        middle = float(data["top"][i]) + float(data["height"][i]) / 2.0
+        words.append((float(data["left"][i]), middle, word))
+    return _bands_to_lines(words, LINE_TOLERANCE * dpi / 72.0)
+
+
+def read(path: str | Path, *, use_ocr: bool = True) -> Document:
     path = Path(path)
-    doc = Document(path=path)
+    document = Document(path=path)
+    exe = find_tesseract() if use_ocr else None
     try:
-        with fitz.open(path) as f:
-            for i, page in enumerate(f, start=1):
-                doc.pages.append(Page(number=i, lines=_lines_of(page)))
+        with fitz.open(path) as pdf:
+            for number, page in enumerate(pdf, start=1):
+                lines = _printed_lines(page)
+                thin = sum(len(l.strip()) for l in lines) < settings.SCANNED_PAGE_CHARS
+                if thin and exe and ocr_available():
+                    try:
+                        lines = _scanned_lines(page, exe)
+                        document.pages.append(Page(number, lines, from_ocr=True))
+                        continue
+                    except Exception as e:
+                        document.error = f"OCR gagal di halaman {number}: {e}"
+                document.pages.append(Page(number, lines))
     except Exception as e:
-        doc.error = f"tidak bisa dibuka: {e}"
-    return doc
+        document.error = f"tidak bisa dibuka: {e}"
+    return document

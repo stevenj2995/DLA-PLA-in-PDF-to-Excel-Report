@@ -10,17 +10,24 @@ from pathlib import Path
 
 PORT = 8000
 ROOT = Path(__file__).parent
-WEB_CONFIG = ROOT / "Frontend" / "config.js"
 
 
 def check_setup() -> bool:
     from Backend import profiles
+    from Backend.extract.pdf_reader import find_tesseract, ocr_available
+
     print("Perusahaan didukung:", ", ".join(p.name for p in profiles.ALL))
     drafts = [p.name for p in profiles.DRAFTS]
     if drafts:
         print("Belum aktif (menunggu ditinjau):", ", ".join(drafts))
 
-    # this script always tries to open a public tunnel, so an empty code matters
+    if ocr_available():
+        print("OCR:", "AKTIF -", find_tesseract())
+    else:
+        print("OCR: TIDAK AKTIF - PDF hasil pindaian akan dilewati")
+        print("     pasang dengan: winget install --id UB-Mannheim.TesseractOCR")
+
+    # this script can open a public tunnel, so an empty code matters
     if os.environ.get("ACCESS_CODE", "").strip():
         print("Kode akses: AKTIF")
     else:
@@ -61,56 +68,61 @@ def start_tunnel(exe: str) -> tuple[subprocess.Popen, str | None]:
     return p, url[0]
 
 
-def update_web_config(url: str) -> bool:
-    if not WEB_CONFIG.exists():
-        return False
-    text = WEB_CONFIG.read_text(encoding="utf-8")
-    updated = re.sub(r'window\.BACKEND_URL\s*=\s*"[^"]*";',
-                     f'window.BACKEND_URL = "{url}";', text)
-    if updated == text:
-        return False
-    WEB_CONFIG.write_text(updated, encoding="utf-8")
-    return True
-
-
 def main() -> int:
-    print("\nDLA to Excel\n")
+    print()
+    print("DLA to Excel")
+    print()
     if not check_setup():
         return 1
 
-    print("\nMenyalakan server...")
+    print()
+    print("Menyalakan server...")
     server = start_server()
     time.sleep(3)
     if server.poll() is not None:
         print("Server gagal menyala.")
         return 1
-    print(f"Server aktif di: http://localhost:{PORT}")
+
+    bar = "=" * 62
+    print()
+    print(bar)
+    print(" BUKA DI BROWSER:")
+    print(f"   http://localhost:{PORT}")
+    print()
+    print(" Halaman dan API ada di alamat yang sama, jadi tidak ada yang")
+    print(" perlu disetel. Unggah PDF langsung dari halaman itu.")
+    print(bar)
 
     exe = shutil.which("cloudflared")
     tunnel = None
-    if not exe:
-        print("\nCloudflared belum terpasang, jadi backend hanya bisa diakses dari laptop ini.")
-        print("  winget install --id Cloudflare.cloudflared")
-    else:
-        print("\nMembuka terowongan ke internet...")
+    if exe:
+        print()
+        print("Membuka terowongan ke internet...")
         tunnel, url = start_tunnel(exe)
         if not url:
-            print("Terowongan gagal dibuka. Periksa koneksi internet.")
+            print("Terowongan gagal dibuka. Yang di laptop ini tetap jalan.")
         else:
-            written = update_web_config(url)
-            print("\n" + "=" * 62)
-            print(" ALAMAT BACKEND PUBLIK:")
+            print()
+            print(bar)
+            print(" ALAMAT UNTUK DEVICE LAIN:")
             print(f"   {url}")
-            if written:
-                print("\n Frontend/config.js sudah diperbarui otomatis.")
-                print(" Deploy ulang Vercel supaya halaman publik memakai alamat ini.")
-            print("=" * 62)
+            print()
+            print(" Halamannya ikut disajikan di alamat itu, tinggal dibuka.")
+            print(" Alamat ini berubah setiap kali run.py dijalankan.")
+            print(bar)
+    else:
+        print()
+        print("Cloudflared belum terpasang, jadi baru bisa dipakai dari laptop ini.")
+        print("  winget install --id Cloudflare.cloudflared")
 
-    print("\nBackend AKTIF. Ctrl+C untuk mematikan.\n")
+    print()
+    print("Backend AKTIF. Ctrl+C untuk mematikan.")
+    print()
     try:
         server.wait()
     except KeyboardInterrupt:
-        print("\nMematikan backend...")
+        print()
+        print("Mematikan backend...")
     finally:
         for p in (tunnel, server):
             if p and p.poll() is None:

@@ -3,12 +3,6 @@ from dataclasses import dataclass, field
 
 from .extract import parser
 
-# How a value is lifted out of the printed text.
-#   raw            take it as it stands
-#   amount         the digits attached to the currency
-#   last_amount    the digits of the last number on the line
-#   currency       the currency code only
-#   text_only      drop the money, keep the words
 TAKE = {
     "raw": lambda v: v,
     "amount": parser.amount,

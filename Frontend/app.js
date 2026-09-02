@@ -190,6 +190,14 @@ function renderResults(d) {
 
   $("block-preview").innerHTML = renderPreview(d);
 
+  $("block-scanned").innerHTML = (d.scanned || []).length
+    ? '<div class="notice notice-amber"><strong>Dibaca lewat OCR: ' +
+      d.scanned.map(esc).join(", ") + "</strong>" +
+      "<p>Berkas ini tidak punya lapisan teks, jadi isinya dikenali dari gambar. " +
+      "Satu huruf atau angka bisa salah baca tanpa terlihat keliru - mohon " +
+      "cocokkan barisnya dengan dokumen asli.</p></div>"
+    : "";
+
   $("block-deviating").innerHTML = (d.deviating || []).length
     ? "<h3>Parameternya menyimpang</h3>" + d.deviating.map((f) =>
         "<details><summary>&#9888; " + esc(f.file) + "</summary>" +

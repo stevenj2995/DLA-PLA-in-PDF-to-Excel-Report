@@ -14,10 +14,12 @@ pip install -r requirements.txt
 python run.py
 ```
 
-`run.py` menyalakan backend di port 8000, lalu membuka terowongan Cloudflare
-supaya halaman Vercel bisa menghubunginya, dan menulis alamat barunya ke
-`Frontend/config.js`. Alamat itu berubah tiap kali dijalankan, jadi Vercel perlu
-di-deploy ulang agar halaman publik menunjuk ke alamat yang baru.
+Lalu buka **http://localhost:8000**. Halaman dan API disajikan dari alamat yang
+sama, jadi tidak ada yang perlu disetel dan tidak ada urusan CORS.
+
+Kalau `cloudflared` terpasang, `run.py` juga membuka terowongan dan mencetak satu
+alamat https yang menyajikan halaman sekaligus API, supaya bisa dibuka dari
+device lain. Alamat itu berubah setiap kali dijalankan.
 
 Kalau backend dibuka ke internet, pasang kode akses lebih dulu:
 
@@ -48,6 +50,17 @@ daripada berkas yang ditolak.
 Untuk JRP: halaman `DEBIT NOTE` diabaikan, hanya halaman DLA yang dibaca. Dari
 blok nominal hanya nilai nett yang diambil. Mata uang dipisah jadi kolom
 tersendiri di sebelah kiri tiap kolom nominal.
+
+## PDF hasil pindaian
+
+Halaman yang tidak punya lapisan teks dibaca dengan Tesseract (`ind+eng`) pada
+300 dpi. Barisnya dibentuk dari posisi kata, sama seperti jalur PDF digital,
+supaya hasilnya sebangun.
+
+Diuji dengan menjadikan DLA JRP sebagai gambar lalu membacanya ulang: 23 dari 24
+kolom sama persis dengan hasil PDF aslinya. Yang berbeda satu, `Jl.` terbaca
+`JI.` -- batas OCR yang tidak bisa dihilangkan. Karena itu setiap berkas yang
+dibaca lewat OCR ditandai di halaman hasil supaya dicocokkan manual.
 
 ## Privasi
 
