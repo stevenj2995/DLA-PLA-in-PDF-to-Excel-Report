@@ -249,15 +249,63 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
   .stats { grid-template-columns: repeat(2, 1fr) }
 }
 
-/* ---- pilihan radio langkah 2 ---- */
-.choice-list { display: grid; gap: 10px; margin-top: 12px }
-.choice {
-  display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
-  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px;
+/* ---- kartu pilihan perusahaan ---- */
+.company-grid {
+  display: grid; gap: 12px; margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
-.choice:hover { border-color: var(--line-strong); background: var(--blue-soft) }
-.choice input { margin-top: 3px; accent-color: var(--blue) }
-.choice-sub { display: block; color: var(--text-soft); font-size: .86rem; margin-top: 2px }
+
+.company-card {
+  position: relative; display: flex; align-items: center; gap: 13px;
+  padding: 15px 16px; margin: 0; cursor: pointer; text-align: left;
+  font: inherit; color: var(--text); width: 100%;
+  background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: border-color .16s, box-shadow .16s, transform .16s, background .16s;
+}
+.company-card:hover:not(.is-off):not(.is-loading) {
+  border-color: var(--blue); transform: translateY(-1px);
+  box-shadow: 0 6px 18px -10px rgba(4, 26, 52, .5);
+}
+.company-card:focus-visible { outline: none; box-shadow: var(--ring) }
+
+.company-card .badge {
+  flex: none; width: 42px; height: 42px; border-radius: 12px;
+  display: grid; place-items: center;
+  font-weight: 800; font-size: .82rem; letter-spacing: .02em;
+  background: var(--blue-soft); color: var(--blue-dark);
+  border: 1px solid var(--line-strong);
+}
+.company-card .text { display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.company-card .name {
+  font-weight: 700; font-size: 1.02rem; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.company-card .sub { font-size: .78rem; color: var(--text-soft) }
+
+.company-card.is-on {
+  border-color: var(--blue); background: var(--blue-soft);
+}
+.company-card.is-on .badge {
+  background: var(--blue); color: var(--on-blue); border-color: var(--blue);
+}
+.company-card.is-on .sub { color: var(--blue-dark); font-weight: 600 }
+.company-card.is-on::after {
+  content: "✓"; position: absolute; top: 9px; right: 12px;
+  color: var(--blue); font-weight: 800; font-size: .9rem;
+}
+
+.company-card.is-off {
+  cursor: not-allowed; background: transparent; border-style: dashed;
+  border-color: var(--line-strong);
+}
+.company-card.is-off .badge {
+  background: transparent; color: var(--text-faint); border-style: dashed;
+}
+.company-card.is-off .name { color: var(--text-faint); font-weight: 600 }
+.company-card.is-off .sub { color: var(--text-faint) }
+
+.company-card.is-loading { color: var(--text-faint); cursor: default; justify-content: center }
 
 /* ---- pratinjau baris hasil ---- */
 .preview-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm) }
@@ -273,4 +321,9 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
   display: inline-block; background: var(--blue-soft); color: var(--blue-dark);
   border: 1px solid var(--line-strong); border-radius: 999px;
   padding: 4px 12px; font-weight: 600; font-size: .86rem; margin-bottom: 10px;
+}
+
+
+.table-caption {
+  margin: 18px 2px 8px; font-size: .95rem; font-weight: 700; color: var(--blue-dark);
 }

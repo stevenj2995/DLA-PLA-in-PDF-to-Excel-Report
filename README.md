@@ -14,27 +14,24 @@ pip install -r requirements.txt
 python run.py
 ```
 
-`run.py` menyalakan backend di port 8000, lalu membuka terowongan Cloudflare
-supaya halaman Vercel bisa menghubunginya, dan menulis alamat barunya ke
-`Frontend/config.js`. Alamat itu berubah tiap kali dijalankan, jadi Vercel perlu
-di-deploy ulang agar halaman publik menunjuk ke alamat yang baru.
+Lalu buka **http://localhost:8000**. Halaman dan pemrosesan ada di alamat yang
+sama, jadi tidak ada yang perlu disetel dan tidak ada urusan CORS.
 
-Kalau backend dibuka ke internet, pasang kode akses lebih dulu:
-
-```
-set ACCESS_CODE=kode-anda
-```
+Semuanya berjalan di laptop ini saja. Server mendengarkan di `127.0.0.1`, bukan
+`0.0.0.0`, jadi komputer lain di jaringan kantor pun tidak bisa menghubunginya.
+Tidak ada terowongan, tidak ada backend di internet, dan dokumen klaim tidak
+pernah keluar dari mesin ini.
 
 ## Isi folder
 
 ```
-run.py                     menyalakan backend dan terowongan
+run.py                     menyalakan backend di localhost
 Backend/server.py          menerima unggahan, mengatur sesi, menghapus jejak
 Backend/pipeline.py        alur dari PDF sampai Excel
 Backend/profiles.py        aturan per perusahaan: kolom apa, diambil dari mana
 Backend/extract/           membaca PDF jadi baris, lalu jadi pasangan label-nilai
 Backend/build/excel.py     menulis sheet hasil
-Frontend/                  halaman yang dilihat pengunjung, di-deploy ke Vercel
+Frontend/                  halaman yang disajikan backend di localhost
 PDF Files/                 contoh DLA, tidak ikut masuk git
 ```
 
@@ -49,8 +46,32 @@ Untuk JRP: halaman `DEBIT NOTE` diabaikan, hanya halaman DLA yang dibaca. Dari
 blok nominal hanya nilai nett yang diambil. Mata uang dipisah jadi kolom
 tersendiri di sebelah kiri tiap kolom nominal.
 
+## PDF hasil pindaian
+
+Halaman yang tidak punya lapisan teks dibaca dengan Tesseract (`ind+eng`) pada
+300 dpi. Barisnya dibentuk dari posisi kata, sama seperti jalur PDF digital,
+supaya hasilnya sebangun.
+
+Diuji dengan menjadikan DLA JRP sebagai gambar lalu membacanya ulang: 23 dari 24
+kolom sama persis dengan hasil PDF aslinya. Yang berbeda satu, `Jl.` terbaca
+`JI.` -- batas OCR yang tidak bisa dihilangkan. Karena itu setiap berkas yang
+dibaca lewat OCR ditandai di halaman hasil supaya dicocokkan manual.
+
 ## Privasi
 
-PDF yang diunggah dihapus dari server begitu selesai dibaca. Excel hasil
-tersimpan sementara maksimal 15 menit, dan pengunjung bisa menghapusnya sendiri
-lebih cepat lewat tombol di halaman hasil.
+Semua pemrosesan terjadi di laptop ini. Tidak ada layanan pihak ketiga yang
+menyentuh isi dokumen.
+
+PDF yang diunggah dihapus begitu selesai dibaca. Excel hasil tersimpan sementara
+di folder temporary maksimal 15 menit, dan bisa dihapus lebih cepat lewat tombol
+di halaman hasil.
+
+Repo ini publik di GitHub, tetapi `.gitignore` menahan `*.pdf`, `*.xlsx`,
+`PDF Files/`, dan `Output/`. Riwayat git sudah diperiksa: tidak pernah ada satu
+pun dokumen klaim yang ikut masuk.
+
+`vercel.json` dan `.vercelignore` sengaja ditinggalkan meski deployment tidak
+dipakai. Keduanya membatasi Vercel hanya menyajikan `Frontend/`; kalau dihapus
+sementara integrasi GitHub masih tersambung, Vercel justru akan menerbitkan
+seluruh repo termasuk kode Python. Untuk benar-benar melepasnya, hapus
+project-nya dari dasbor Vercel.
