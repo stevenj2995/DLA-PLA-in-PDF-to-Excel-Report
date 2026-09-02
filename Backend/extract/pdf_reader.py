@@ -47,10 +47,6 @@ class Page:
     lines: list[str] = field(default_factory=list)
     from_ocr: bool = False
 
-    @property
-    def heading(self) -> str:
-        return next((l for l in self.lines if l.strip()), "")
-
     def headings(self, depth: int = 6) -> list[str]:
         """The first few printed lines. The document title is not always the
         first of them: OCR reads the letterhead logo as text, so a scanned JRP

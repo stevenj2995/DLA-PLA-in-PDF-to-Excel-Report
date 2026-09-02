@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import profiles, settings
+from . import profiles
 from .build import excel
 from .extract import parser, pdf_reader
 from .profiles import Profile
