@@ -5,19 +5,13 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-SHEET_NAME = "DLA"
+SHEET_NAME = "Report"
 HEADER_FILL = PatternFill("solid", fgColor="1F3864")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 MIN_WIDTH, MAX_WIDTH = 10, 52
 
 
 def write(path: str | Path, headers: list[str], rows: list[list[str]]) -> Path:
-    """One sheet: the document's own parameters as headers, one row per PDF.
-
-    Everything is written as text on purpose. The values are lifted from the PDF
-    exactly as printed -- '49,185,430,585.00' stays that string, so Excel cannot
-    reinterpret a number or a date into something the letter never said.
-    """
     path = Path(path)
     wb = Workbook()
     ws = wb.active

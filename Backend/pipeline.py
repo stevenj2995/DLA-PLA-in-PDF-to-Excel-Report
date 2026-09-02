@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import profiles
-from .build import excel
+from .build import excelGenerator
 from .extract import parser, pdf_reader
 from .profiles import Profile
 
@@ -17,6 +17,7 @@ class FileResult:
     reason: str = ""
     values: list[str] = field(default_factory=list)
     from_ocr: bool = False
+    note: str = ""
     missing: list[str] = field(default_factory=list)   # columns the letter lacks
     extra: dict[str, str] = field(default_factory=dict)  # labels the profile ignores
 
@@ -51,20 +52,76 @@ class BatchResult:
     def scanned(self) -> list[FileResult]:
         return [f for f in self.files if f.ok and f.from_ocr]
 
+    @property
+    def noted(self) -> list[FileResult]:
+        return [f for f in self.files if f.ok and f.note]
 
-def _labels_of(document, profile: Profile | None) -> dict[str, str]:
-    """Every label:value in the document, minus pages that are another document."""
-    skip = profile.skip_headings if profile else ()
+
+def _sections_merged(document) -> dict[str, str]:
+    """Every label in the file, for working out which company it is from."""
     found: dict[str, str] = {}
+    for page in document.pages:
+        found.update(parser.pairs(page.lines, bulleted_money=True))
+    return found
+
+
+def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
+    """Each advice in the file as its own set of label:value pairs.
+
+    One file can carry the same DLA reissued for every reinsurer on the risk,
+    each with a different share. A page that does not carry the owner label is
+    treated as a continuation of the advice above it.
+    """
+    skip = profile.skip_headings if profile else ()
+    owner = profile.owner_label if profile else ""
+    out: list[dict[str, str]] = []
     for page in document.pages:
         if any(h.casefold() in skip for h in page.headings()):
             continue
-        found.update(parser.pairs(
+        found = parser.pairs(
             page.lines,
             split_shared_lines=profile.split_shared_lines if profile else False,
             bulleted_money=profile.bulleted_money if profile else True,
-        ))
-    return found
+        )
+        if not found:
+            continue
+        if out and (not owner or owner not in found):
+            out[-1].update(found)
+        else:
+            out.append(found)
+    return out
+
+
+def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
+    """The one advice that is ours, plus a note when there was a choice to make.
+
+    Merging every page into one bag lets the last advice win, and that is how a
+    Tugure share of 1% once landed on a row that should have carried Astra
+    Buana's 6%. When several advices sit in one file, the one addressed to us is
+    the one taken -- and if that cannot be told apart, nothing is taken at all.
+    """
+    sections = _sections(document, profile)
+    if not sections:
+        return {}, ""
+    if len(sections) == 1:
+        return sections[0], ""
+
+    label = profile.owner_label if profile else ""
+    names = profile.owner_names if profile else ()
+    if not label or not names:
+        raise ValueError(f"berkas memuat {len(sections)} DLA, dan profil "
+                         f"belum tahu mana yang milik kita")
+
+    mine = [s for s in sections
+            if any(n in (s.get(label, "") or "").casefold() for n in names)]
+    others = [s.get(label, "?") for s in sections if s not in mine]
+    if len(mine) != 1:
+        raise ValueError(
+            f"berkas memuat {len(sections)} DLA untuk reasuradur berbeda "
+            f"({', '.join(s.get(label, '?') for s in sections)}), dan "
+            f"{'tidak satu pun' if not mine else f'{len(mine)}'} ditujukan ke kita")
+    return mine[0], (f"berkas memuat {len(sections)} DLA; diambil yang ditujukan ke "
+                     f"{mine[0].get(label)}, sisanya dilewati ({', '.join(others)})")
 
 
 def read_one(path: Path, profile: Profile) -> FileResult:
@@ -79,7 +136,12 @@ def read_one(path: Path, profile: Profile) -> FileResult:
         return result
 
     result.from_ocr = document.used_ocr
-    found = _labels_of(document, profile)
+    try:
+        found, note = _labels_of(document, profile)
+    except ValueError as e:
+        result.reason = str(e)
+        return result
+    result.note = note
     used = {c.source for c in profile.columns} | set(profile.ignore)
     for column in profile.columns:
         raw = found.get(column.source)
@@ -150,7 +212,7 @@ def _detect(paths: list[Path], batch: BatchResult) -> Profile | None:
         document = pdf_reader.read(path)
         if document.error or not document.has_text:
             continue
-        found = profiles.detect(_labels_of(document, None))
+        found = profiles.detect(_sections_merged(document))
         if found:
             return found
     batch.rejected = (
@@ -163,5 +225,5 @@ def to_excel(batch: BatchResult, folder: Path, stem: str = "") -> Path | None:
     if not batch.rows:
         return None
     name = stem or (batch.profile.name if batch.profile else "DLA")
-    batch.excel_path = excel.write(Path(folder) / f"{name}.xlsx", batch.headers, batch.rows)
+    batch.excel_path = excelGenerator.write(Path(folder) / f"{name}.xlsx", batch.headers, batch.rows)
     return batch.excel_path

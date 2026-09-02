@@ -259,6 +259,12 @@ function renderResults(d) {
 
   $("block-preview").innerHTML = renderPreview(d);
 
+  $("block-picked").innerHTML = (d.picked || []).length
+    ? '<div class="notice notice-blue"><strong>Beberapa berkas memuat lebih dari ' +
+      "satu DLA</strong><ul>" + d.picked.map((f) =>
+        "<li>" + esc(f.file) + "<br>" + esc(f.note) + "</li>").join("") + "</ul></div>"
+    : "";
+
   $("block-scanned").innerHTML = (d.scanned || []).length
     ? '<div class="notice notice-amber"><strong>Dibaca lewat OCR: ' +
       d.scanned.map(esc).join(", ") + "</strong>" +

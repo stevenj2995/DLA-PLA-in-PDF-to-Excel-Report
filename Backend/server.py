@@ -127,6 +127,7 @@ def _report(batch, session: str, file_id: str | None, out: Path | None) -> dict:
         "notes": batch.notes,
         "skipped": [{"file": f.name, "reason": f.reason} for f in batch.skipped],
         "scanned": [f.name for f in batch.scanned],
+        "picked": [{"file": f.name, "note": f.note} for f in batch.noted],
         "deviating": [{"file": f.name, "missing": f.missing, "extra": sorted(f.extra)}
                       for f in batch.deviating],
         "excel": ({"id": file_id, "file_name": out.name, "rows": len(batch.rows),

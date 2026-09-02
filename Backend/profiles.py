@@ -30,6 +30,10 @@ class Profile:
     bulleted_money: bool = False
     split_shared_lines: bool = False
     reviewed: bool = True
+    # satu berkas bisa memuat dla yang sama, diterbitkan ulang untuk tiap
+    # reasuradur. dua ini menandai salinan mana yang milik kita.
+    owner_label: str = ""
+    owner_names: tuple[str, ...] = ()
 
     def matches(self, labels) -> bool:
         return all(m in labels for m in self.marks)
@@ -41,6 +45,8 @@ JRP = Profile(
     marks=("Ref No", "Risk Cover", "Appointed Adjuster"),
     skip_headings=("debit note", "credit note"),
     ignore=("Definite Claim Amount", "Deductible"),
+    owner_label="Reinsurer",
+    owner_names=("astra buana", "asuransi astra buana", "asuransi astra"),
     columns=(
         # Parameter yang akan diambil saat dibaca
         Column("Ref No", "Ref No"),

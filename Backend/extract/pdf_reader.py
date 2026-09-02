@@ -9,9 +9,6 @@ import fitz
 
 from .. import settings
 
-# Words are grouped into visual lines by their y position. Anything within the
-# same band is one line, left to right -- that is how a DLA reads on paper. The
-# tolerance is in PDF points, so it is scaled up when reading a rendered image.
 LINE_TOLERANCE = 3.0
 
 BORDER_ARTEFACTS = {"|", "!", "¦", "_", "—", "–", "l|", "||"}
@@ -80,12 +77,6 @@ class Document:
 
 
 def _bands_to_lines(words, tolerance: float) -> list[str]:
-    """Words to visual lines, grouped by how close their vertical centres are.
-
-    Fixed bins were tried first and are not good enough: a word whose centre
-    lands near a bin edge is thrown into the next line, which split labels away
-    from their values on OCR pages.
-    """
     lines: list[list[tuple[float, str]]] = []
     anchor = None
     for x, y, word in sorted(words, key=lambda w: w[1]):
@@ -102,8 +93,6 @@ def _printed_lines(page) -> list[str]:
 
 
 def _scanned_lines(page, exe: str) -> list[str]:
-    """Render the page and read it with Tesseract, keeping word positions so the
-    lines come out the same shape as a printed page would give."""
     import pytesseract
     from PIL import Image
 
@@ -111,18 +100,10 @@ def _scanned_lines(page, exe: str) -> list[str]:
     dpi = settings.OCR_DPI
     pix = page.get_pixmap(dpi=dpi)
     image = Image.open(io.BytesIO(pix.tobytes("png")))
-    data = pytesseract.image_to_data(image, lang=settings.OCR_LANGUAGES,
-                                     config=f"--psm {settings.OCR_PSM}",
-                                     output_type=pytesseract.Output.DICT)
-    # Group by the middle of each word, not its top edge. A colon or a dash sits
-    # in the middle of the line, so its box starts well below the letters around
-    # it and banding by the top edge drops it into the following line -- which
-    # left every label separated from its value by a line holding just ":".
+    data = pytesseract.image_to_data(image, lang=settings.OCR_LANGUAGES, config=f"--psm {settings.OCR_PSM}", output_type=pytesseract.Output.DICT)
     words = []
     for i, text in enumerate(data["text"]):
         word = (text or "").strip()
-        # a rule or table border comes back as a lone bar, and it lands inside
-        # the value next to it: 'Cause of Loss' read as '| Mechanical - Breakdown'
         if not word or word in BORDER_ARTEFACTS:
             continue
         middle = float(data["top"][i]) + float(data["height"][i]) / 2.0
