@@ -250,13 +250,6 @@ function renderResults(d) {
       '">&#8595; Unduh Excel</a></div>'
     : (d.rejected ? "" : '<div class="notice notice-amber">Tidak ada Excel yang dihasilkan.</div>');
 
-  $("block-decision").innerHTML = d.needs_decision ? renderDecision(d) : "";
-  if (d.needs_decision) {
-    $("decide-merge").addEventListener("click", () => decide("merge"));
-    $("decide-reject").addEventListener("click", () => decide("reject"));
-  }
-  $("cleanup").classList.toggle("hidden", !d.excel);
-
   $("block-preview").innerHTML = renderPreview(d);
 
   $("block-picked").innerHTML = (d.picked || []).length
@@ -291,58 +284,29 @@ function renderResults(d) {
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// Only ever shown when a batch actually turned out uneven. One company's DLAs
-// are supposed to be identical, so this is a signal that something is wrong
-// with the batch rather than a setting to pick beforehand.
-function renderDecision(d) {
-  const files = (d.deviating || []).map((f) =>
-    "<li><strong>" + esc(f.file) + "</strong>" +
-    (f.missing.length ? "<br>tidak ada: " + f.missing.map(esc).join(", ") : "") +
-    (f.extra.length ? "<br>tambahan: " + f.extra.map(esc).join(", ") : "") +
-    "</li>").join("");
-  return '<div class="notice notice-amber"><strong>' + d.summary.deviating +
-    " dari " + d.summary.rows + " berkas parameternya tidak sama dengan yang lain." +
-    "</strong><p>Satu perusahaan seharusnya seragam, jadi ini tanda ada berkas " +
-    "yang salah masuk atau gagal terbaca:</p><ul>" + files + "</ul></div>" +
-    '<div class="action-row">' +
-    '<button id="decide-merge">Gabungkan semua &amp; buat Excel</button>' +
-    '<button id="decide-reject" class="btn-danger">Batalkan batch ini</button>' +
-    "</div>" +
-    '<p class="field-note">Gabungkan: parameter tambahan jadi kolom baru, yang ' +
-    "tidak ada dikosongkan, tidak ada data yang hilang. Batalkan: tidak ada " +
-    "Excel yang dibuat dan datanya langsung dihapus.</p>";
-}
-
-async function decide(keep) {
-  if (!currentSession) return;
-  $("block-decision").innerHTML = '<div class="loading"><span class="spinner"></span>' +
-    "<span>Menyelesaikan…</span></div>";
-  const fd = new FormData();
-  fd.append("keep", keep);
-  try {
-    const r = await fetch(API + "/api/decide/" + encodeURIComponent(currentSession),
-                          { method: "POST", body: fd });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.detail || "Gagal (HTTP " + r.status + ")");
-    renderResults(d);
-  } catch (e) {
-    $("block-decision").innerHTML = "";
-    showError(e.message);
-  }
-}
-
+// One table per set of parameters. Advices that carry different parameters are
+// kept apart instead of merged into one wide table full of blanks.
 function renderPreview(d) {
-  const rows = d.preview || [], headers = d.headers || [];
-  if (!rows.length) return "";
-  const head = "<tr>" + headers.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>";
-  const body = rows.map((r) =>
-    "<tr>" + headers.map((_, i) => "<td>" + esc(r[i]) + "</td>").join("") + "</tr>").join("");
-  const more = d.summary.rows > rows.length
-    ? '<p class="preview-note">Menampilkan ' + rows.length + " dari " +
-      d.summary.rows + " baris. Selengkapnya ada di Excel.</p>"
-    : "";
-  return '<h3>Pratinjau</h3><div class="preview-wrap"><table class="preview"><thead>' +
-         head + "</thead><tbody>" + body + "</tbody></table></div>" + more;
+  const groups = d.groups || [];
+  if (!groups.length) return "";
+  const many = groups.length > 1;
+
+  return "<h3>Pratinjau</h3>" + (many
+    ? '<div class="notice notice-blue">Parameternya tidak seragam, jadi hasilnya ' +
+      "dipisah menjadi " + groups.length + " tabel dalam satu sheet.</div>"
+    : "") + groups.map((g, n) => {
+      const head = "<tr>" + g.headers.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>";
+      const body = (g.preview || []).map((r) =>
+        "<tr>" + g.headers.map((_, i) => "<td>" + esc(r[i]) + "</td>").join("") + "</tr>").join("");
+      const more = g.rows > (g.preview || []).length
+        ? '<p class="preview-note">Menampilkan ' + g.preview.length + " dari " +
+          g.rows + " baris. Selengkapnya ada di Excel.</p>"
+        : "";
+      return (many ? '<h4 class="table-caption">Tabel ' + (n + 1) + " &middot; " +
+                     esc(g.caption) + "</h4>" : "") +
+             '<div class="preview-wrap"><table class="preview"><thead>' + head +
+             "</thead><tbody>" + body + "</tbody></table></div>" + more;
+    }).join("");
 }
 
 // ---- hapus data ----

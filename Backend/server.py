@@ -120,10 +120,10 @@ def _report(batch, session: str, file_id: str | None, out: Path | None) -> dict:
         "session": session,
         "company": batch.profile.name if batch.profile else None,
         "rejected": batch.rejected,
-        "needs_decision": False,
         "summary": _summary(batch),
-        "headers": batch.headers,
-        "preview": batch.rows[:5],
+        "groups": [{"caption": g.caption, "headers": g.headers,
+                    "preview": g.rows[:5], "rows": len(g.rows)}
+                   for g in batch.groups],
         "notes": batch.notes,
         "skipped": [{"file": f.name, "reason": f.reason} for f in batch.skipped],
         "scanned": [f.name for f in batch.scanned],
@@ -192,42 +192,10 @@ async def process(
         # the PDFs have been read; they do not stay on disk any longer
         shutil.rmtree(incoming, ignore_errors=True)
 
-    session = uuid.uuid4().hex
-
-    # A batch of one company should be uniform. When it is not, that is a signal
-    # worth stopping on rather than a variation to absorb quietly, so the choice
-    # is put to the person only at the moment it actually applies.
-    if batch.rows and batch.deviating:
-        with _lock:
-            _sessions[session] = {"time": time.time(), "workspace": workspace,
-                                  "files": {}, "batch": batch}
-        answer = _report(batch, session, None, None)
-        answer["needs_decision"] = True
-        return answer
-
-    return _finish_batch(batch, session, workspace)
-
-
-@app.post("/api/decide/{session}")
-def decide(session: str, keep: str = Form("merge")):
-    _drop_expired()
-    data = _sessions.get(session)
-    if not data or not data.get("batch"):
-        raise HTTPException(status_code=404, detail="Sesi sudah tidak tersedia.")
-    batch = data["batch"]
-    workspace: Path = data["workspace"]
-
-    if keep == "reject":
-        shutil.rmtree(workspace, ignore_errors=True)
-        _sessions.pop(session, None)
-        batch.rejected = (
-            f"{len(batch.deviating)} dari {len(batch.done)} PDF parameternya tidak "
-            f"sama dengan yang lain. Batch dibatalkan sesuai pilihan Anda, dan "
-            f"tidak ada Excel yang dibuat.")
-        batch.rows = []
-        return _report(batch, session, None, None)
-
-    return _finish_batch(batch, session, workspace)
+    # Uneven parameters used to stop here and ask whether to merge or refuse.
+    # They no longer pollute anything: each set of parameters becomes its own
+    # table in the sheet, so there is nothing left to decide.
+    return _finish_batch(batch, uuid.uuid4().hex, workspace)
 
 
 @app.get("/api/download/{session}/{file_id}")

@@ -323,3 +323,7 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
   padding: 4px 12px; font-weight: 600; font-size: .86rem; margin-bottom: 10px;
 }
 
+
+.table-caption {
+  margin: 18px 2px 8px; font-size: .95rem; font-weight: 700; color: var(--blue-dark);
+}
