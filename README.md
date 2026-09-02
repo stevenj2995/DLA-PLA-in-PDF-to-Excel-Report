@@ -62,6 +62,33 @@ kolom sama persis dengan hasil PDF aslinya. Yang berbeda satu, `Jl.` terbaca
 `JI.` -- batas OCR yang tidak bisa dihilangkan. Karena itu setiap berkas yang
 dibaca lewat OCR ditandai di halaman hasil supaya dicocokkan manual.
 
+## Hosting backend
+
+Vercel hanya menyajikan isi `Frontend/`. Kode Python tidak pernah ikut ke sana,
+dan memang tidak bisa: OCR butuh Tesseract yang merupakan program native, batch
+ratusan PDF makan waktu jauh melewati batas fungsi serverless, dan Excel hasil
+perlu tetap ada sampai diunduh.
+
+Backend punya `Dockerfile` sendiri berisi Python dan Tesseract lengkap dengan
+paket bahasa `eng` dan `ind`. `render.yaml` menyiapkannya untuk Render, tapi
+Dockerfile itu jalan di mana pun yang menerima container -- Railway, Fly.io,
+atau VPS biasa.
+
+Langkahnya:
+
+1. Deploy repo ini ke Render sebagai **Docker** service. `render.yaml` sudah
+   menunjuk `Dockerfile` dan memakai `/api/status` sebagai health check.
+2. Pasang `ACCESS_CODE` lewat dasbor. Backend ini terbuka di internet, jadi
+   tanpa kode akses siapa pun yang punya alamatnya bisa mengunggah.
+3. Isi alamat hasil deploy ke `window.BACKEND_URL` di `Frontend/config.js`, lalu
+   push. Vercel akan deploy ulang sendiri.
+
+Setelah itu halaman Vercel jalan tanpa laptop siapa pun menyala. Alamat hasil
+deploy juga menyajikan halamannya sendiri, jadi Vercel sebetulnya jadi opsional.
+
+Yang perlu disadari sebelum melangkah: PDF klaim asli akan diunggah ke server
+pihak ketiga dan diproses di sana, bukan lagi di laptop sendiri.
+
 ## Privasi
 
 PDF yang diunggah dihapus dari server begitu selesai dibaca. Excel hasil

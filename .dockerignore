@@ -1,0 +1,16 @@
+.git
+.github
+PDF Files
+Output
+Docs
+__pycache__
+*.pyc
+*.pdf
+*.xlsx
+.vercel
+.venv
+venv
+run.py
+README.md
+vercel.json
+.vercelignore
