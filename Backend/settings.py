@@ -18,3 +18,4 @@ OCR_LANGUAGES = "ind+eng"
 OCR_DPI = 300
 OCR_PSM = 6
 SCANNED_PAGE_CHARS = 120
+OCR_WORKERS = min(8, (os.cpu_count() or 2))
