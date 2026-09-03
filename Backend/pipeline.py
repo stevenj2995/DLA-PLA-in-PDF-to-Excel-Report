@@ -28,6 +28,14 @@ class FileResult:
 
 
 @dataclass
+class Note:
+    """One line for the results page, with the long list folded away behind it."""
+    text: str
+    detail: list[str] = field(default_factory=list)
+    level: str = "info"          # info | warn
+
+
+@dataclass
 class Group:
     """One table: every advice here carried the same set of parameters."""
     headers: list[str] = field(default_factory=list)
@@ -43,7 +51,7 @@ class BatchResult:
     rows: list[list[str]] = field(default_factory=list)
     files: list[FileResult] = field(default_factory=list)
     groups: list[Group] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    notes: list[Note] = field(default_factory=list)
     rejected: str = ""
     excel_path: Path | None = None
 
@@ -66,6 +74,10 @@ class BatchResult:
     @property
     def noted(self) -> list[FileResult]:
         return [f for f in self.files if f.ok and f.note]
+
+    @property
+    def total_rows(self) -> int:
+        return sum(len(g.rows) for g in self.groups)
 
 
 def _sections_merged(document) -> dict[str, str]:
@@ -226,25 +238,38 @@ def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
         batch.rows = batch.groups[0].rows
 
     if len(batch.groups) > 1:
-        batch.notes.append(
-            f"Parameternya tidak seragam, jadi hasilnya dipisah menjadi "
-            f"{len(batch.groups)} tabel dalam satu sheet: "
-            + "; ".join(f"{len(g.rows)} DLA dengan {len(g.headers) - 1} parameter"
-                        for g in batch.groups) + ".")
+        batch.notes.append(Note(
+            f"Hasilnya dipisah menjadi {len(batch.groups)} tabel dalam satu sheet, "
+            f"karena parameter antar dokumen memang berbeda-beda.",
+            [f"Tabel {i + 1}: {len(g.rows)} DLA, {len(g.headers) - 1} parameter"
+             for i, g in enumerate(batch.groups)]))
+
     extras = sorted({k for f in batch.done for k in f.extra})
     if extras:
-        batch.notes.append(
-            f"{len(extras)} parameter di luar profil {profile.name} ikut "
-            f"dimasukkan sebagai kolom: {', '.join(extras)}.")
+        batch.notes.append(Note(
+            f"{len(extras)} parameter di luar profil {profile.name} ikut jadi kolom.",
+            extras))
+
+    if batch.noted:
+        kita = profile.owner_names[0].title() if profile.owner_names else "kita"
+        batch.notes.append(Note(
+            f"{len(batch.noted)} berkas memuat lebih dari satu DLA. Yang diambil "
+            f"selalu yang ditujukan ke {kita}.",
+            [f"{f.name} - {f.note}" for f in batch.noted]))
+
     if batch.scanned:
-        batch.notes.append(
-            f"{len(batch.scanned)} PDF tidak punya lapisan teks dan dibaca lewat OCR. "
-            f"Huruf dan angkanya bisa salah baca tanpa terlihat keliru, jadi mohon "
-            f"dicocokkan dengan dokumen aslinya.")
-    blank = [f.name for f in batch.done if f.missing]
+        batch.notes.append(Note(
+            f"{len(batch.scanned)} PDF dibaca lewat OCR karena tidak punya lapisan "
+            f"teks. Huruf dan angkanya bisa salah baca tanpa terlihat keliru, jadi "
+            f"mohon dicocokkan dengan dokumen aslinya.",
+            [f.name for f in batch.scanned], level="warn"))
+
+    blank = [f for f in batch.done if f.missing]
     if blank:
-        batch.notes.append(
-            f"{len(blank)} PDF tidak memuat sebagian parameter, selnya dikosongkan.")
+        batch.notes.append(Note(
+            f"{len(blank)} PDF tidak memuat sebagian parameter, selnya dikosongkan.",
+            [f"{f.name} - tidak ada: {', '.join(f.missing)}" for f in blank]))
+
     return batch
 
 

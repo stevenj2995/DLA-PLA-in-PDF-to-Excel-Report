@@ -324,10 +324,6 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
 }
 
 
-.table-caption {
-  margin: 18px 2px 8px; font-size: .95rem; font-weight: 700; color: var(--blue-dark);
-}
-
 /* ---- ringkasan berkas terpilih ---- */
 .file-summary {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -346,3 +342,38 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
   color: var(--blue); font: inherit; font-weight: 600; font-size: .88rem;
 }
 .link-btn:hover { color: var(--blue-dark); text-decoration: underline }
+
+/* ---- catatan hasil ---- */
+.note-panel { padding: 18px 20px }
+.note-list { list-style: none; display: grid; gap: 12px }
+.note {
+  position: relative; padding-left: 20px; font-size: 13.5px; line-height: 1.55;
+  color: var(--text);
+}
+.note::before {
+  content: ""; position: absolute; left: 0; top: 7px;
+  width: 8px; height: 8px; border-radius: 50%; background: var(--blue);
+}
+.note-warn::before { background: var(--amber) }
+.note details { margin-top: 5px }
+.note summary {
+  cursor: pointer; color: var(--blue); font-weight: 600; font-size: 12.5px;
+  list-style: none;
+}
+.note summary::-webkit-details-marker { display: none }
+.note summary::before { content: "▸ "; display: inline-block; transition: transform .15s }
+.note details[open] summary::before { content: "▾ " }
+.note summary:hover { text-decoration: underline }
+.detail-list {
+  margin: 8px 0 0 4px; padding: 10px 12px; list-style: none;
+  max-height: 220px; overflow-y: auto;
+  background: var(--blue-soft); border-radius: 8px;
+  font-size: 12.5px; color: var(--text-soft); line-height: 1.6;
+}
+.detail-list li { padding: 2px 0; border-bottom: 1px solid rgba(0,0,0,.04) }
+.detail-list li:last-child { border-bottom: 0 }
+
+/* ---- kartu tabel pratinjau ---- */
+.table-card { padding: 16px 18px; margin-bottom: 14px }
+.table-card .panel-title { margin-bottom: 12px }
+.table-card .preview-note { margin: 10px 2px 0; color: var(--text-soft) }

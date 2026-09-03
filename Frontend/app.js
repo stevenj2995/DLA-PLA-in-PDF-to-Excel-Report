@@ -267,92 +267,89 @@ function renderResults(d) {
   $("stats").innerHTML = [
     ["PDF dibaca", s.pdfs, "var(--blue)"],
     ["Baris jadi", s.rows, "var(--green)"],
-    ["Kolom", s.columns, "var(--cyan)"],
-    ["Dilewati", s.skipped, s.skipped ? "var(--red)" : "var(--text-faint)"],
+    ["Tabel", s.tables, "var(--cyan)"],
+    ["Dilewati", s.skipped, s.skipped ? "var(--amber)" : "var(--text-faint)"],
   ].map((x) =>
     '<div class="stat" style="border-left-color:' + x[2] + '">' +
     '<div class="value" style="color:' + x[2] + '">' + (x[1] == null ? 0 : x[1]) + "</div>" +
     '<div class="label">' + x[0] + "</div></div>").join("");
 
-  let notes = "";
+  let head = "";
   if (d.company) {
-    notes += '<div class="company-tag">Perusahaan terdeteksi: ' + esc(d.company) + "</div>";
+    head += '<div class="company-tag">Perusahaan: ' + esc(d.company) + "</div>";
   }
   if (d.rejected) {
-    notes += '<div class="notice notice-red">' + esc(d.rejected) + "</div>";
+    head += '<div class="notice notice-red">' + esc(d.rejected) + "</div>";
   }
-  (d.notes || []).forEach((t) => {
-    notes += '<div class="notice notice-blue">' + esc(t) + "</div>";
-  });
-  $("block-notes").innerHTML = notes;
+  $("block-notes").innerHTML = head + renderNotes(d.notes || []);
 
   $("block-excel").innerHTML = d.excel
     ? '<div class="excel-row"><div class="excel-info">' +
       '<div class="excel-company">' + esc(d.excel.file_name) + "</div>" +
-      '<div class="excel-detail">' + d.excel.rows + " baris &middot; " +
-      d.excel.columns + " kolom</div></div>" +
+      '<div class="excel-detail">' + d.excel.rows + " baris" +
+      (d.excel.tables > 1 ? " &middot; " + d.excel.tables + " tabel" : "") + "</div></div>" +
       '<a class="download" href="' + API + "/api/download/" +
       encodeURIComponent(d.session) + "/" + encodeURIComponent(d.excel.id) +
       '">&#8595; Unduh Excel</a></div>'
     : (d.rejected ? "" : '<div class="notice notice-amber">Tidak ada Excel yang dihasilkan.</div>');
 
+  $("block-skipped").innerHTML = renderSkipped(d.skipped || []);
   $("block-preview").innerHTML = renderPreview(d);
-
-  $("block-picked").innerHTML = (d.picked || []).length
-    ? '<div class="notice notice-blue"><strong>Beberapa berkas memuat lebih dari ' +
-      "satu DLA</strong><ul>" + d.picked.map((f) =>
-        "<li>" + esc(f.file) + "<br>" + esc(f.note) + "</li>").join("") + "</ul></div>"
-    : "";
-
-  $("block-scanned").innerHTML = (d.scanned || []).length
-    ? '<div class="notice notice-amber"><strong>Dibaca lewat OCR: ' +
-      d.scanned.map(esc).join(", ") + "</strong>" +
-      "<p>Berkas ini tidak punya lapisan teks, jadi isinya dikenali dari gambar. " +
-      "Satu huruf atau angka bisa salah baca tanpa terlihat keliru - mohon " +
-      "cocokkan barisnya dengan dokumen asli.</p></div>"
-    : "";
-
-  $("block-deviating").innerHTML = (d.deviating || []).length
-    ? "<h3>Parameternya menyimpang</h3>" + d.deviating.map((f) =>
-        "<details><summary>&#9888; " + esc(f.file) + "</summary>" +
-        '<div class="details-body"><ul>' +
-        (f.missing.length ? "<li>Tidak ada: " + f.missing.map(esc).join(", ") + "</li>" : "") +
-        (f.extra.length ? "<li>Tambahan: " + f.extra.map(esc).join(", ") + "</li>" : "") +
-        "</ul></div></details>").join("")
-    : "";
-
-  $("block-skipped").innerHTML = (d.skipped || []).length
-    ? "<h3>Dilewati</h3>" + d.skipped.map((f) =>
-        '<div class="notice notice-amber">' + esc(f.file) + " - " + esc(f.reason) + "</div>").join("")
-    : "";
 
   $("results").classList.remove("hidden");
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// One table per set of parameters. Advices that carry different parameters are
-// kept apart instead of merged into one wide table full of blanks.
+// Every note is one line. The list behind it -- which can run to seventy file
+// names -- stays folded until asked for, so the page reads at a glance.
+function renderNotes(notes) {
+  if (!notes.length) return "";
+  return '<div class="panel note-panel"><h3 class="panel-title">Catatan</h3><ul class="note-list">' +
+    notes.map((n) =>
+      '<li class="note note-' + esc(n.level || "info") + '">' +
+      "<span>" + esc(n.text) + "</span>" +
+      ((n.detail || []).length
+        ? "<details><summary>Lihat " + n.detail.length + " rincian</summary>" +
+          '<ul class="detail-list">' +
+          n.detail.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul></details>"
+        : "") +
+      "</li>").join("") + "</ul></div>";
+}
+
+// Skipped files are grouped by why, so twenty files sharing a reason are one
+// line instead of twenty cards.
+function renderSkipped(groups) {
+  if (!groups.length) return "";
+  const total = groups.reduce((n, g) => n + g.files.length, 0);
+  return '<div class="panel note-panel"><h3 class="panel-title">Dilewati (' + total +
+    " berkas)</h3><ul class=\"note-list\">" +
+    groups.map((g) =>
+      '<li class="note note-warn"><span>' + g.files.length + " berkas &mdash; " +
+      esc(g.reason) + "</span><details><summary>Lihat daftarnya</summary>" +
+      '<ul class="detail-list">' + g.files.map((f) => "<li>" + esc(f) + "</li>").join("") +
+      "</ul></details></li>").join("") + "</ul></div>";
+}
+
+// One table per set of parameters, each in its own card so the caption stays
+// readable against the page behind it.
 function renderPreview(d) {
   const groups = d.groups || [];
   if (!groups.length) return "";
-  const many = groups.length > 1;
-
-  return "<h3>Pratinjau</h3>" + (many
-    ? '<div class="notice notice-blue">Parameternya tidak seragam, jadi hasilnya ' +
-      "dipisah menjadi " + groups.length + " tabel dalam satu sheet.</div>"
-    : "") + groups.map((g, n) => {
-      const head = "<tr>" + g.headers.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>";
-      const body = (g.preview || []).map((r) =>
-        "<tr>" + g.headers.map((_, i) => "<td>" + esc(r[i]) + "</td>").join("") + "</tr>").join("");
-      const more = g.rows > (g.preview || []).length
-        ? '<p class="preview-note">Menampilkan ' + g.preview.length + " dari " +
-          g.rows + " baris. Selengkapnya ada di Excel.</p>"
-        : "";
-      return (many ? '<h4 class="table-caption">Tabel ' + (n + 1) + " &middot; " +
-                     esc(g.caption) + "</h4>" : "") +
-             '<div class="preview-wrap"><table class="preview"><thead>' + head +
-             "</thead><tbody>" + body + "</tbody></table></div>" + more;
-    }).join("");
+  return '<h2 class="section-heading">Pratinjau</h2>' + groups.map((g, n) => {
+    const head = "<tr>" + g.headers.map((h) => "<th>" + esc(h) + "</th>").join("") + "</tr>";
+    const body = (g.preview || []).map((r) =>
+      "<tr>" + g.headers.map((_, i) => "<td>" + esc(r[i]) + "</td>").join("") + "</tr>").join("");
+    const shown = (g.preview || []).length;
+    return '<div class="panel table-card">' +
+      '<h3 class="panel-title">' + (groups.length > 1 ? "Tabel " + (n + 1) + " &middot; " : "") +
+      esc(g.caption) + "</h3>" +
+      '<div class="preview-wrap"><table class="preview"><thead>' + head +
+      "</thead><tbody>" + body + "</tbody></table></div>" +
+      (g.rows > shown
+        ? '<p class="preview-note">Menampilkan ' + shown + " dari " + g.rows +
+          " baris. Selengkapnya ada di Excel.</p>"
+        : "") + "</div>";
+  }).join("");
 }
 
 // ---- hapus data ----

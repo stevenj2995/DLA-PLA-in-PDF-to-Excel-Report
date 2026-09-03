@@ -108,11 +108,19 @@ async def _collect(files: list[UploadFile], into: Path) -> list[Path]:
 def _summary(batch) -> dict:
     return {
         "pdfs": len(batch.files),
-        "rows": len(batch.rows),
-        "columns": len(batch.headers),
+        "rows": batch.total_rows,
+        "tables": len(batch.groups),
         "skipped": len(batch.skipped),
-        "deviating": len(batch.deviating),
     }
+
+
+def _skipped_by_reason(batch) -> list[dict]:
+    """Twenty files skipped for the same reason is one line, not twenty cards."""
+    grouped: dict[str, list[str]] = {}
+    for f in batch.skipped:
+        grouped.setdefault(f.reason, []).append(f.name)
+    return [{"reason": reason, "files": names}
+            for reason, names in sorted(grouped.items(), key=lambda x: -len(x[1]))]
 
 
 def _report(batch, session: str, file_id: str | None, out: Path | None) -> dict:
@@ -124,14 +132,11 @@ def _report(batch, session: str, file_id: str | None, out: Path | None) -> dict:
         "groups": [{"caption": g.caption, "headers": g.headers,
                     "preview": g.rows[:5], "rows": len(g.rows)}
                    for g in batch.groups],
-        "notes": batch.notes,
-        "skipped": [{"file": f.name, "reason": f.reason} for f in batch.skipped],
-        "scanned": [f.name for f in batch.scanned],
-        "picked": [{"file": f.name, "note": f.note} for f in batch.noted],
-        "deviating": [{"file": f.name, "missing": f.missing, "extra": sorted(f.extra)}
-                      for f in batch.deviating],
-        "excel": ({"id": file_id, "file_name": out.name, "rows": len(batch.rows),
-                   "columns": len(batch.headers)} if out else None),
+        "notes": [{"text": n.text, "detail": n.detail, "level": n.level}
+                  for n in batch.notes],
+        "skipped": _skipped_by_reason(batch),
+        "excel": ({"id": file_id, "file_name": out.name, "rows": batch.total_rows,
+                   "tables": len(batch.groups)} if out else None),
     }
 
 
