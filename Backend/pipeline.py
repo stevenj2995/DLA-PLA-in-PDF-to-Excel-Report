@@ -110,9 +110,10 @@ def _starts_advice(page, profile: Profile | None) -> bool:
     advice happens to be one page plus one debit note -- an advice that runs to
     two pages, or one issued without a debit note, would throw that off.
     """
-    if not profile or not profile.title:
+    if not profile or not profile.titles:
         return True
-    return any(profile.title in h.casefold() for h in page.headings())
+    headings = [h.casefold() for h in page.headings()]
+    return any(title in h for title in profile.titles for h in headings)
 
 
 def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
@@ -134,11 +135,31 @@ def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
         )
         if not found:
             continue
-        if out and not _starts_advice(page, profile):
+        if out and not _starts_advice(page, profile) and not _contradicts(out[-1], found, profile):
             out[-1].update(found)
         else:
             out.append(found)
     return out
+
+
+def _contradicts(advice: dict, page: dict, profile: Profile | None) -> bool:
+    """Whether this page restates what the advice above already said, differently.
+
+    A continuation page adds fields; it does not disagree about them. When it
+    disagrees, the page is really a new document whose title this profile does
+    not recognise -- and merging it would quietly overwrite the advice above,
+    which is exactly how a Tugure share once landed on an Astra row.
+
+    This is the net under the title list: a document type nobody has told the
+    profile about still gets split rather than silently blended.
+    """
+    owner = profile.owner_label if profile else ""
+    if owner and owner in advice and owner in page:
+        if (page[owner] or "").strip() != (advice[owner] or "").strip():
+            return True
+    clashes = sum(1 for k, v in page.items()
+                  if k in advice and v and advice[k] and v.strip() != advice[k].strip())
+    return clashes >= 2
 
 
 def _labels_of(document, profile: Profile | None):
