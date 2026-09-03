@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DLA to Excel</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128196;</text></svg>">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 
@@ -62,7 +62,9 @@
         </div>
         <input type="file" id="file-input" accept=".zip,application/zip,application/pdf,.pdf" multiple hidden>
 
+        <div id="file-summary" class="file-summary hidden"></div>
         <ul id="file-list" class="file-list"></ul>
+        <div id="file-more" class="file-more hidden"></div>
 
         <div id="code-row" class="hidden">
           <label class="step-title" for="code">Kode akses</label>
@@ -117,7 +119,7 @@
 
 </main>
 
-<script src="config.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

@@ -106,13 +106,59 @@ function addFiles(list) {
   renderFileList();
 }
 
+// A batch runs to a couple of hundred files, and listing them all buries the
+// rest of the page. Only the first few are shown until asked otherwise, and the
+// full list is a box that scrolls on its own rather than stretching the page.
+const PREVIEW_FILES = 5;
+let showAllFiles = false;
+
 function renderFileList() {
-  const ul = $("file-list");
-  ul.innerHTML = chosen.map((f, i) =>
-    '<li><span class="file-name">' + esc(f.name) + "</span>" +
-    '<span class="file-size">' + humanSize(f.size) + "</span>" +
-    '<button class="remove" data-i="' + i + '" title="Buang" aria-label="Buang ' +
-    esc(f.name) + '">&times;</button></li>').join("");
+  const ul = $("file-list"), summary = $("file-summary"), more = $("file-more");
+  const total = chosen.length;
+
+  if (!total) {
+    ul.innerHTML = "";
+    summary.classList.add("hidden");
+    more.classList.add("hidden");
+    showAllFiles = false;
+    updateSubmit();
+    return;
+  }
+
+  const bytes = chosen.reduce((sum, f) => sum + f.size, 0);
+  summary.classList.remove("hidden");
+  summary.innerHTML =
+    "<span><strong>" + total + " berkas</strong> &middot; " + humanSize(bytes) + "</span>" +
+    '<button type="button" class="link-btn" id="clear-files">Kosongkan</button>';
+
+  const shown = showAllFiles ? chosen : chosen.slice(0, PREVIEW_FILES);
+  ul.classList.toggle("is-scrollable", showAllFiles && total > PREVIEW_FILES);
+  ul.innerHTML = shown.map((f) => {
+    const i = chosen.indexOf(f);
+    return '<li><span class="file-name">' + esc(f.name) + "</span>" +
+      '<span class="file-size">' + humanSize(f.size) + "</span>" +
+      '<button class="remove" data-i="' + i + '" title="Buang" aria-label="Buang ' +
+      esc(f.name) + '">&times;</button></li>';
+  }).join("");
+
+  if (total > PREVIEW_FILES) {
+    more.classList.remove("hidden");
+    more.innerHTML = '<button type="button" class="link-btn" id="toggle-files">' +
+      (showAllFiles ? "Tampilkan " + PREVIEW_FILES + " saja"
+                    : "Tampilkan semua (" + total + " berkas)") + "</button>";
+    $("toggle-files").addEventListener("click", () => {
+      showAllFiles = !showAllFiles;
+      renderFileList();
+    });
+  } else {
+    more.classList.add("hidden");
+  }
+
+  $("clear-files").addEventListener("click", () => {
+    chosen = [];
+    hideError();
+    renderFileList();
+  });
   ul.querySelectorAll(".remove").forEach((b) =>
     b.addEventListener("click", () => { chosen.splice(Number(b.dataset.i), 1); renderFileList(); }));
   updateSubmit();
