@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DLA to Excel</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128196;</text></svg>">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -62,7 +62,9 @@
         </div>
         <input type="file" id="file-input" accept=".zip,application/zip,application/pdf,.pdf" multiple hidden>
 
+        <div id="file-summary" class="file-summary hidden"></div>
         <ul id="file-list" class="file-list"></ul>
+        <div id="file-more" class="file-more hidden"></div>
 
         <div id="code-row" class="hidden">
           <label class="step-title" for="code">Kode akses</label>
@@ -92,12 +94,9 @@
   <section id="results" class="hidden">
     <h2 class="section-heading">Hasil</h2>
     <div id="stats" class="stats"></div>
-    <div id="block-notes"></div>
     <div id="block-excel"></div>
     <div id="block-preview"></div>
-    <div id="block-picked"></div>
-    <div id="block-scanned"></div>
-    <div id="block-deviating"></div>
+    <div id="block-notes"></div>
     <div id="block-skipped"></div>
 
     <div id="cleanup" class="panel panel-cleanup">
@@ -117,7 +116,7 @@
 
 </main>
 
-<script src="config.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="config.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

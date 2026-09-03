@@ -18,6 +18,8 @@ class FileResult:
     values: list[str] = field(default_factory=list)
     from_ocr: bool = False
     note: str = ""
+    total_dla: int = 0                 # advices found in this file, ours or not
+    astra_dla: int = 0                 # 0 or 1: whether one of them was ours
     shape: tuple[str, ...] = ()        # labels this advice actually carried
     missing: list[str] = field(default_factory=list)   # columns the letter lacks
     extra: dict[str, str] = field(default_factory=dict)  # labels the profile ignores
@@ -25,6 +27,14 @@ class FileResult:
     @property
     def name(self) -> str:
         return self.path.name
+
+
+@dataclass
+class Note:
+    """One line for the results page, with the long list folded away behind it."""
+    text: str
+    detail: list[str] = field(default_factory=list)
+    level: str = "info"          # info | warn
 
 
 @dataclass
@@ -43,7 +53,7 @@ class BatchResult:
     rows: list[list[str]] = field(default_factory=list)
     files: list[FileResult] = field(default_factory=list)
     groups: list[Group] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
+    notes: list[Note] = field(default_factory=list)
     rejected: str = ""
     excel_path: Path | None = None
 
@@ -67,6 +77,22 @@ class BatchResult:
     def noted(self) -> list[FileResult]:
         return [f for f in self.files if f.ok and f.note]
 
+    @property
+    def total_rows(self) -> int:
+        return sum(len(g.rows) for g in self.groups)
+
+    @property
+    def total_dla(self) -> int:
+        return sum(f.total_dla for f in self.files)
+
+    @property
+    def astra_dla(self) -> int:
+        return sum(f.astra_dla for f in self.files)
+
+    @property
+    def other_dla(self) -> int:
+        return self.total_dla - self.astra_dla
+
 
 def _sections_merged(document) -> dict[str, str]:
     """Every label in the file, for working out which company it is from."""
@@ -84,9 +110,10 @@ def _starts_advice(page, profile: Profile | None) -> bool:
     advice happens to be one page plus one debit note -- an advice that runs to
     two pages, or one issued without a debit note, would throw that off.
     """
-    if not profile or not profile.title:
+    if not profile or not profile.titles:
         return True
-    return any(profile.title in h.casefold() for h in page.headings())
+    headings = [h.casefold() for h in page.headings()]
+    return any(title in h for title in profile.titles for h in headings)
 
 
 def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
@@ -108,15 +135,41 @@ def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
         )
         if not found:
             continue
-        if out and not _starts_advice(page, profile):
+        if out and not _starts_advice(page, profile) and not _contradicts(out[-1], found, profile):
             out[-1].update(found)
         else:
             out.append(found)
     return out
 
 
-def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
-    """The one advice addressed to us, plus a note when others were set aside.
+def _contradicts(advice: dict, page: dict, profile: Profile | None) -> bool:
+    """Whether this page restates what the advice above already said, differently.
+
+    A continuation page adds fields; it does not disagree about them. When it
+    disagrees, the page is really a new document whose title this profile does
+    not recognise -- and merging it would quietly overwrite the advice above,
+    which is exactly how a Tugure share once landed on an Astra row.
+
+    This is the net under the title list: a document type nobody has told the
+    profile about still gets split rather than silently blended.
+    """
+    owner = profile.owner_label if profile else ""
+    if owner and owner in advice and owner in page:
+        if (page[owner] or "").strip() != (advice[owner] or "").strip():
+            return True
+    clashes = sum(1 for k, v in page.items()
+                  if k in advice and v and advice[k] and v.strip() != advice[k].strip())
+    return clashes >= 2
+
+
+def _labels_of(document, profile: Profile | None):
+    """The one advice addressed to us, how many others sat beside it, and why
+    none was picked when that happens.
+
+    Returns (found, note, reason, total, other): `found` is None when nothing
+    was picked, in which case `reason` explains it. `total` is how many advices
+    the file held regardless of outcome, and `other` how many of those were not
+    ours -- both needed to answer "how many DLA in total, how many for Astra".
 
     Whose advice it is gets checked however many the file holds. Trusting a
     lone advice without looking is what let files ending in REINS through: each
@@ -124,16 +177,17 @@ def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
     nineteen of their rows reached the sheet as if they were ours.
     """
     sections = _sections(document, profile)
+    total = len(sections)
     if not sections:
-        return {}, ""
+        return None, "", "tidak ditemukan DLA di berkas ini", 0, 0
 
     label = profile.owner_label if profile else ""
     names = profile.owner_names if profile else ()
     if not label or not names:
-        if len(sections) == 1:
-            return sections[0], ""
-        raise ValueError(f"berkas memuat {len(sections)} DLA, dan profil belum "
-                         f"tahu mana yang milik kita")
+        if total == 1:
+            return sections[0], "", "", 1, 0
+        return None, "", (f"berkas memuat {total} DLA, dan profil belum tahu "
+                          f"mana yang milik kita"), total, 0
 
     def addressee(section) -> str:
         return (section.get(label) or "?").strip()
@@ -146,19 +200,22 @@ def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
 
     if len(mine) == 1:
         if not others:
-            return mine[0], ""
-        return mine[0], (f"berkas memuat {len(sections)} DLA; diambil yang ditujukan "
-                         f"ke {addressee(mine[0])}, sisanya dilewati "
-                         f"({', '.join(others)})")
+            return mine[0], "", "", total, 0
+        note = (f"berkas memuat {total} DLA; diambil yang ditujukan ke "
+               f"{addressee(mine[0])}, sisanya dilewati ({', '.join(others)})")
+        return mine[0], note, "", total, len(others)
+
     if not mine:
         named = [x for x in others if x != "?"]
         if not named:
-            raise ValueError(f"tidak ada baris '{label}' di berkas ini, jadi tidak "
-                             f"bisa dipastikan DLA ini ditujukan ke siapa")
-        raise ValueError(f"DLA di berkas ini ditujukan ke {', '.join(named)}, "
-                         f"bukan ke kita")
-    raise ValueError(f"{len(mine)} DLA di berkas ini sama-sama ditujukan ke kita, "
-                     f"tidak bisa ditentukan mana yang dipakai")
+            return None, "", (f"tidak ada baris '{label}' di berkas ini, jadi "
+                              f"tidak bisa dipastikan DLA ini ditujukan ke "
+                              f"siapa"), total, 0
+        return None, "", (f"DLA di berkas ini ditujukan ke {', '.join(named)}, "
+                          f"bukan ke kita"), total, total
+
+    return None, "", (f"{len(mine)} DLA di berkas ini sama-sama ditujukan ke "
+                      f"kita, tidak bisa ditentukan mana yang dipakai"), total, 0
 
 
 def read_one(path: Path, profile: Profile) -> FileResult:
@@ -173,12 +230,13 @@ def read_one(path: Path, profile: Profile) -> FileResult:
         return result
 
     result.from_ocr = document.used_ocr
-    try:
-        found, note = _labels_of(document, profile)
-    except ValueError as e:
-        result.reason = str(e)
+    found, note, reason, total, other = _labels_of(document, profile)
+    result.total_dla = total
+    if found is None:
+        result.reason = reason
         return result
     result.note = note
+    result.astra_dla = 1
     used = {c.source for c in profile.columns} | set(profile.ignore)
     for column in profile.columns:
         raw = found.get(column.source)
@@ -226,25 +284,38 @@ def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
         batch.rows = batch.groups[0].rows
 
     if len(batch.groups) > 1:
-        batch.notes.append(
-            f"Parameternya tidak seragam, jadi hasilnya dipisah menjadi "
-            f"{len(batch.groups)} tabel dalam satu sheet: "
-            + "; ".join(f"{len(g.rows)} DLA dengan {len(g.headers) - 1} parameter"
-                        for g in batch.groups) + ".")
+        batch.notes.append(Note(
+            f"Hasilnya dipisah menjadi {len(batch.groups)} tabel dalam satu sheet, "
+            f"karena parameter antar dokumen memang berbeda-beda.",
+            [f"Tabel {i + 1}: {len(g.rows)} DLA, {len(g.headers) - 1} parameter"
+             for i, g in enumerate(batch.groups)]))
+
     extras = sorted({k for f in batch.done for k in f.extra})
     if extras:
-        batch.notes.append(
-            f"{len(extras)} parameter di luar profil {profile.name} ikut "
-            f"dimasukkan sebagai kolom: {', '.join(extras)}.")
+        batch.notes.append(Note(
+            f"{len(extras)} parameter di luar profil {profile.name} ikut jadi kolom.",
+            extras))
+
+    if batch.noted:
+        kita = profile.owner_names[0].title() if profile.owner_names else "kita"
+        batch.notes.append(Note(
+            f"{len(batch.noted)} berkas memuat lebih dari satu DLA. Yang diambil "
+            f"selalu yang ditujukan ke {kita}.",
+            [f"{f.name} - {f.note}" for f in batch.noted]))
+
     if batch.scanned:
-        batch.notes.append(
-            f"{len(batch.scanned)} PDF tidak punya lapisan teks dan dibaca lewat OCR. "
-            f"Huruf dan angkanya bisa salah baca tanpa terlihat keliru, jadi mohon "
-            f"dicocokkan dengan dokumen aslinya.")
-    blank = [f.name for f in batch.done if f.missing]
+        batch.notes.append(Note(
+            f"{len(batch.scanned)} PDF dibaca lewat OCR karena tidak punya lapisan "
+            f"teks. Huruf dan angkanya bisa salah baca tanpa terlihat keliru, jadi "
+            f"mohon dicocokkan dengan dokumen aslinya.",
+            [f.name for f in batch.scanned], level="warn"))
+
+    blank = [f for f in batch.done if f.missing]
     if blank:
-        batch.notes.append(
-            f"{len(blank)} PDF tidak memuat sebagian parameter, selnya dikosongkan.")
+        batch.notes.append(Note(
+            f"{len(blank)} PDF tidak memuat sebagian parameter, selnya dikosongkan.",
+            [f"{f.name} - tidak ada: {', '.join(f.missing)}" for f in blank]))
+
     return batch
 
 

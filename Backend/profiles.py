@@ -32,7 +32,7 @@ class Profile:
     reviewed: bool = True
     # satu berkas bisa memuat dla yang sama, diterbitkan ulang untuk tiap
     # reasuradur. dua ini menandai salinan mana yang milik kita.
-    title: str = ""                      # judul yang menandai awal satu dla
+    titles: tuple[str, ...] = ()          # judul-judul yang menandai awal satu advice
     owner_label: str = ""
     owner_names: tuple[str, ...] = ()
 
@@ -46,7 +46,9 @@ JRP = Profile(
     marks=("Ref No", "Risk Cover", "Appointed Adjuster"),
     skip_headings=("debit note", "credit note"),
     ignore=("Definite Claim Amount", "Deductible"),
-    title="definite loss advice",
+    # "PROJECT NAME - PLA" DLA/PLA to Excel: this project reads both kinds of
+    # advice, so a file re-issuing PLAs per reinsurer splits the same way DLAs do.
+    titles=("definite loss advice", "preliminary loss advice"),
     owner_label="Reinsurer",
     owner_names=("astra buana", "asuransi astra buana", "asuransi astra"),
     columns=(
