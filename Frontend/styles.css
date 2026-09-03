@@ -203,7 +203,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 .panel-title { font-size: 15.5px; font-weight: 650; margin-bottom: 14px; color: var(--text) }
 .panel-cleanup { border-top: 3px solid var(--amber) }
 
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin-bottom: 16px }
 .stat {
   background: var(--surface); border-radius: var(--radius-sm);
   border-left: 4px solid var(--line-strong);
@@ -247,6 +247,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
   .action-row { flex-direction: column; align-items: stretch }
   #submit { width: 100% }
   .stats { grid-template-columns: repeat(2, 1fr) }
+  .stat .value { font-size: 20px }
 }
 
 /* ---- kartu pilihan perusahaan ---- */

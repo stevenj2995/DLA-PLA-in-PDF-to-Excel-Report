@@ -18,6 +18,8 @@ class FileResult:
     values: list[str] = field(default_factory=list)
     from_ocr: bool = False
     note: str = ""
+    total_dla: int = 0                 # advices found in this file, ours or not
+    astra_dla: int = 0                 # 0 or 1: whether one of them was ours
     shape: tuple[str, ...] = ()        # labels this advice actually carried
     missing: list[str] = field(default_factory=list)   # columns the letter lacks
     extra: dict[str, str] = field(default_factory=dict)  # labels the profile ignores
@@ -79,6 +81,18 @@ class BatchResult:
     def total_rows(self) -> int:
         return sum(len(g.rows) for g in self.groups)
 
+    @property
+    def total_dla(self) -> int:
+        return sum(f.total_dla for f in self.files)
+
+    @property
+    def astra_dla(self) -> int:
+        return sum(f.astra_dla for f in self.files)
+
+    @property
+    def other_dla(self) -> int:
+        return self.total_dla - self.astra_dla
+
 
 def _sections_merged(document) -> dict[str, str]:
     """Every label in the file, for working out which company it is from."""
@@ -127,8 +141,14 @@ def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
     return out
 
 
-def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
-    """The one advice addressed to us, plus a note when others were set aside.
+def _labels_of(document, profile: Profile | None):
+    """The one advice addressed to us, how many others sat beside it, and why
+    none was picked when that happens.
+
+    Returns (found, note, reason, total, other): `found` is None when nothing
+    was picked, in which case `reason` explains it. `total` is how many advices
+    the file held regardless of outcome, and `other` how many of those were not
+    ours -- both needed to answer "how many DLA in total, how many for Astra".
 
     Whose advice it is gets checked however many the file holds. Trusting a
     lone advice without looking is what let files ending in REINS through: each
@@ -136,16 +156,17 @@ def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
     nineteen of their rows reached the sheet as if they were ours.
     """
     sections = _sections(document, profile)
+    total = len(sections)
     if not sections:
-        return {}, ""
+        return None, "", "tidak ditemukan DLA di berkas ini", 0, 0
 
     label = profile.owner_label if profile else ""
     names = profile.owner_names if profile else ()
     if not label or not names:
-        if len(sections) == 1:
-            return sections[0], ""
-        raise ValueError(f"berkas memuat {len(sections)} DLA, dan profil belum "
-                         f"tahu mana yang milik kita")
+        if total == 1:
+            return sections[0], "", "", 1, 0
+        return None, "", (f"berkas memuat {total} DLA, dan profil belum tahu "
+                          f"mana yang milik kita"), total, 0
 
     def addressee(section) -> str:
         return (section.get(label) or "?").strip()
@@ -158,19 +179,22 @@ def _labels_of(document, profile: Profile | None) -> tuple[dict[str, str], str]:
 
     if len(mine) == 1:
         if not others:
-            return mine[0], ""
-        return mine[0], (f"berkas memuat {len(sections)} DLA; diambil yang ditujukan "
-                         f"ke {addressee(mine[0])}, sisanya dilewati "
-                         f"({', '.join(others)})")
+            return mine[0], "", "", total, 0
+        note = (f"berkas memuat {total} DLA; diambil yang ditujukan ke "
+               f"{addressee(mine[0])}, sisanya dilewati ({', '.join(others)})")
+        return mine[0], note, "", total, len(others)
+
     if not mine:
         named = [x for x in others if x != "?"]
         if not named:
-            raise ValueError(f"tidak ada baris '{label}' di berkas ini, jadi tidak "
-                             f"bisa dipastikan DLA ini ditujukan ke siapa")
-        raise ValueError(f"DLA di berkas ini ditujukan ke {', '.join(named)}, "
-                         f"bukan ke kita")
-    raise ValueError(f"{len(mine)} DLA di berkas ini sama-sama ditujukan ke kita, "
-                     f"tidak bisa ditentukan mana yang dipakai")
+            return None, "", (f"tidak ada baris '{label}' di berkas ini, jadi "
+                              f"tidak bisa dipastikan DLA ini ditujukan ke "
+                              f"siapa"), total, 0
+        return None, "", (f"DLA di berkas ini ditujukan ke {', '.join(named)}, "
+                          f"bukan ke kita"), total, total
+
+    return None, "", (f"{len(mine)} DLA di berkas ini sama-sama ditujukan ke "
+                      f"kita, tidak bisa ditentukan mana yang dipakai"), total, 0
 
 
 def read_one(path: Path, profile: Profile) -> FileResult:
@@ -185,12 +209,13 @@ def read_one(path: Path, profile: Profile) -> FileResult:
         return result
 
     result.from_ocr = document.used_ocr
-    try:
-        found, note = _labels_of(document, profile)
-    except ValueError as e:
-        result.reason = str(e)
+    found, note, reason, total, other = _labels_of(document, profile)
+    result.total_dla = total
+    if found is None:
+        result.reason = reason
         return result
     result.note = note
+    result.astra_dla = 1
     used = {c.source for c in profile.columns} | set(profile.ignore)
     for column in profile.columns:
         raw = found.get(column.source)

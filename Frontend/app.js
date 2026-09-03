@@ -266,8 +266,9 @@ function renderResults(d) {
   const s = d.summary || {};
   $("stats").innerHTML = [
     ["PDF dibaca", s.pdfs, "var(--blue)"],
-    ["Baris jadi", s.rows, "var(--green)"],
-    ["Tabel", s.tables, "var(--cyan)"],
+    ["DLA ditemukan", s.total_dla, "var(--cyan)"],
+    ["Untuk Astra Buana", s.astra_dla, "var(--green)"],
+    ["Bukan untuk Astra", s.other_dla, s.other_dla ? "var(--amber)" : "var(--text-faint)"],
     ["Dilewati", s.skipped, s.skipped ? "var(--amber)" : "var(--text-faint)"],
   ].map((x) =>
     '<div class="stat" style="border-left-color:' + x[2] + '">' +

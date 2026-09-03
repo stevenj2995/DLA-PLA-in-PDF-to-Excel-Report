@@ -111,6 +111,9 @@ def _summary(batch) -> dict:
         "rows": batch.total_rows,
         "tables": len(batch.groups),
         "skipped": len(batch.skipped),
+        "total_dla": batch.total_dla,
+        "astra_dla": batch.astra_dla,
+        "other_dla": batch.other_dla,
     }
 
 
