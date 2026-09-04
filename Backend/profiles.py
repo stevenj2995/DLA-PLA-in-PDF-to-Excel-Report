@@ -36,6 +36,10 @@ class Profile:
     titles: tuple[str, ...] = ()          # judul-judul yang menandai awal satu advice
     owner_label: str = ""
     owner_names: tuple[str, ...] = ()
+    # true when owner_label names no printed field at all, and is instead
+    # filled in from the letterhead above the title -- see
+    # parser.letterhead_before_title
+    owner_from_letterhead: bool = False
     # column source name for the bare line printed right under the title,
     # for companies whose own document number carries no label at all
     reference_after_title: str = ""
@@ -130,31 +134,34 @@ ASKRINDO = Profile(
 
 # KMDastur
 #
-# Ownership is unresolved: JRP names the addressee in a printed field
-# ("Reinsurer : ASTRA BUANA"), but KMDastur's only sample has no such field at
-# all -- Astra Buana's name appears solely in the letterhead at the top of the
-# page. owner_label/owner_names are left unset until that is designed, which
-# means a file holding more than one advice is refused outright rather than
-# guessed at (see _labels_of): safe, but such a file would currently be
-# rejected rather than read. Confirm with more real KMDastur files whether
-# that shape ever occurs before this is called finished.
+# KMDastur prints no addressee field at all -- unlike JRP and Askrindo, which
+# both name the addressee in a printed "Reinsurer :" field, Astra Buana's
+# name appears solely in the letterhead art at the top of the page ("PT.
+# ASURANSI ASTRA BUANA", above the title). Real batches are already filtered
+# to Astra-only before they reach this tool, so this is a failsafe rather
+# than the primary defense -- confirmed with Steven on 2026-09-04. Still only
+# verified against one real sample; confirm with more files whether a
+# multi-advice KMDastur file (several reinsurers, one risk) ever occurs.
 KMDASTUR = Profile(
     key="kmdastur",
     name="KMDastur",
     marks=("Name of Reinsured", "Interest Insured"),
     bulleted_money=True,
     titles=("definite loss advice",),
+    owner_label="Kop Surat",
+    owner_names=("astra buana", "asuransi astra buana", "asuransi astra"),
+    owner_from_letterhead=True,
     # KMDastur prints its own document number as a bare line under the title,
     # with no label attached -- "307/CF/103/CPM/VII/2026" under "DEFINITE LOSS
-    # ADVICE". Column name asked for on 2026-09-04: matches the title above it
-    # for now; change the header below once a better name is decided.
+    # ADVICE".
     reference_after_title="Definite Loss Advice",
-    # only the nett is kept, matching the rule for JRP's own amount block
-    ignore=("Indemnity", "Deductible"),
+    # only the nett is kept, matching the rule for JRP's own amount block;
+    # "Kop Surat" is the synthetic ownership field, not a business parameter
+    ignore=("Indemnity", "Deductible", "Kop Surat"),
     reviewed=False,
     columns=(
         # Parameter yang akan diambil saat dibaca
-        Column("Definite Loss Advice", "Definite Loss Advice"),
+        Column("No. Reff DLA", "Definite Loss Advice"),
         Column("Class of Business", "Class of Business"),
         Column("Policy Number", "Policy Number"),
         Column("Your Reference", "Your Reference"),
@@ -163,8 +170,9 @@ KMDASTUR = Profile(
         Column("Name of Insured", "Name of Insured"),
         Column("Interest Insured", "Interest Insured"),
         Column("Currency", "Total Sum Insured", "currency"),
-        # kept whole, not just the first number: "IDR X part of IDR Y" would
-        # lose the treaty total if only the cedant's share were taken
+        # printed exactly as-is; a second, larger figure sometimes trails it
+        # ("... part of IDR Y") -- that shape is a data anomaly, not a real
+        # compound value, so strip_currency keeps only the first figure then
         Column("Total Sum Insured", "Total Sum Insured", "strip_currency"),
         Column("Date of Loss", "Date of Loss"),
         Column("Cause of Loss", "Cause of Loss"),

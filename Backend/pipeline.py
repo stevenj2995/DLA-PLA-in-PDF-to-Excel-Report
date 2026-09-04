@@ -152,6 +152,10 @@ def _sections(document, profile: Profile | None) -> list[tuple[str, dict[str, st
             ref = parser.title_reference(page.headings(), profile.titles)
             if ref:
                 found[profile.reference_after_title] = ref
+        if title and profile and profile.owner_from_letterhead and profile.owner_label:
+            letterhead = parser.letterhead_before_title(page.headings(), profile.titles)
+            if letterhead:
+                found.setdefault(profile.owner_label, letterhead)
         if not found:
             continue
         if out and title is None and not _contradicts(out[-1][1], found, profile):
@@ -233,9 +237,13 @@ def _labels_of(document, profile: Profile | None):
     if not mine:
         named = [x for x in others if x != "?"]
         if not named:
-            return None, "", "", (f"tidak ada baris '{label}' di berkas ini, jadi "
-                                  f"tidak bisa dipastikan {what} ini ditujukan ke "
-                                  f"siapa"), total, 0
+            if profile and profile.owner_from_letterhead:
+                empty_reason = (f"tidak ada kop surat yang terbaca di berkas ini, jadi "
+                                f"tidak bisa dipastikan {what} ini ditujukan ke siapa")
+            else:
+                empty_reason = (f"tidak ada baris '{label}' di berkas ini, jadi "
+                                f"tidak bisa dipastikan {what} ini ditujukan ke siapa")
+            return None, "", "", empty_reason, total, 0
         return None, "", "", (f"{what} di berkas ini ditujukan ke "
                               f"{', '.join(named)}, bukan ke kita"), total, total
 
