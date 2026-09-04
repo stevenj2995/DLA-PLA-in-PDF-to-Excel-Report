@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import shutil
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,12 @@ from .. import settings
 # second page to use. Holding it to one core each and running several pages side
 # by side finishes a ten-page scan in half the time.
 os.environ.setdefault("OMP_THREAD_LIMIT", "1")
+
+# How many pages may be in hand at once, counting every file being read. Held
+# from before a page is rendered until Tesseract is done with it, so it caps
+# both the number of images in memory and the number of Tesseract processes --
+# whether that is ten pages of one file or one page each of ten files.
+_OCR_SLOTS = threading.Semaphore(settings.OCR_WORKERS)
 
 LINE_TOLERANCE = 3.0
 
@@ -132,19 +139,61 @@ def _ocr_pages(pdf, wanted: list[int], exe: str) -> dict[int, list[str]]:
 
     Tesseract runs as a separate program, so the thread waiting on it holds no
     lock and the cores are genuinely used in parallel. Rendering stays on this
-    thread because a PyMuPDF document must not be touched from several at once,
-    and the pages are done in batches so only a handful of images are in memory.
+    thread because a PyMuPDF document must not be touched from several at once;
+    only the reading is handed off.
+
+    A page takes a slot before it is rendered and gives it back once read, so a
+    file being read alone still fills every core, while ten files being read
+    side by side do not between them put eighty images in memory.
     """
+    def read_then_release(image):
+        try:
+            return _read_image(image, exe)
+        finally:
+            _OCR_SLOTS.release()
+
     out: dict[int, list[str]] = {}
     workers = max(1, min(settings.OCR_WORKERS, len(wanted)))
-    for start in range(0, len(wanted), workers):
-        batch = wanted[start:start + workers]
-        images = {i: _page_image(pdf[i]) for i in batch}
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            jobs = {i: pool.submit(_read_image, img, exe) for i, img in images.items()}
-            for i, job in jobs.items():
-                out[i] = job.result()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        jobs: dict[int, object] = {}
+        for i in wanted:
+            _OCR_SLOTS.acquire()
+            try:
+                image = _page_image(pdf[i])
+            except BaseException:
+                _OCR_SLOTS.release()
+                raise
+            jobs[i] = pool.submit(read_then_release, image)
+        for i, job in jobs.items():
+            out[i] = job.result()
     return out
+
+
+def scanned_pages(document: Document) -> list[int]:
+    """Indexes of pages holding too little text to have been read as printed."""
+    return [i for i, page in enumerate(document.pages)
+            if sum(len(l.strip()) for l in page.lines) < settings.SCANNED_PAGE_CHARS]
+
+
+def apply_ocr(document: Document, wanted: list[int] | None = None) -> Document:
+    """Fill in the scanned pages of a document already read without OCR.
+
+    Kept apart from read() so a batch can do the cheap part of every file first
+    and then spend all its cores on the expensive part. Reopening the file costs
+    a couple of milliseconds against seconds of Tesseract.
+    """
+    exe = find_tesseract() if ocr_available() else None
+    wanted = scanned_pages(document) if wanted is None else wanted
+    if not exe or not wanted:
+        return document
+    try:
+        with fitz.open(document.path) as pdf:
+            for i, lines in _ocr_pages(pdf, wanted, exe).items():
+                document.pages[i].lines = lines
+                document.pages[i].from_ocr = True
+    except Exception as e:
+        document.error = f"OCR gagal: {e}"
+    return document
 
 
 def read(path: str | Path, *, use_ocr: bool = True) -> Document:

@@ -1,8 +1,9 @@
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import profiles
+from . import profiles, settings
 from .build import excelGenerator
 from .extract import parser, pdf_reader
 from .profiles import Profile
@@ -218,9 +219,10 @@ def _labels_of(document, profile: Profile | None):
                       f"kita, tidak bisa ditentukan mana yang dipakai"), total, 0
 
 
-def read_one(path: Path, profile: Profile) -> FileResult:
+def read_one(path: Path, profile: Profile, document=None) -> FileResult:
     result = FileResult(path=path)
-    document = pdf_reader.read(path)
+    if document is None:
+        document = pdf_reader.read(path)
     if document.error:
         result.reason = document.error
         return result
@@ -269,10 +271,31 @@ def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
             return batch
     batch.profile = profile
 
+    # Two passes on purpose. Pulling the printed text out of a PDF is work the
+    # processor does itself and holds the interpreter lock while doing, so
+    # spreading that across threads only made 200 files slower -- 3.4 seconds
+    # became 5.2. OCR is the opposite: it waits on Tesseract, so it gains almost
+    # everything from being done side by side. So the cheap pass runs straight
+    # through, and only the pages that turned out to be scanned are shared out.
+    documents = []
     for i, path in enumerate(paths, start=1):
         if progress:
             progress(i, len(paths), path.name)
-        batch.files.append(read_one(path, profile))
+        documents.append(pdf_reader.read(path, use_ocr=False))
+
+    if pdf_reader.ocr_available():
+        needing = [(i, pages) for i, d in enumerate(documents)
+                   if (pages := pdf_reader.scanned_pages(d))]
+        if needing:
+            workers = max(1, min(settings.OCR_WORKERS, len(needing)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                jobs = [pool.submit(pdf_reader.apply_ocr, documents[i], pages)
+                        for i, pages in needing]
+                for job in as_completed(jobs):
+                    job.result()
+
+    batch.files = [read_one(path, profile, document)
+                   for path, document in zip(paths, documents)]
 
     if not batch.done:
         batch.rejected = "Tidak ada satu pun PDF yang bisa dibaca."
