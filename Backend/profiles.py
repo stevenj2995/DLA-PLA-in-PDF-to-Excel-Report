@@ -9,6 +9,7 @@ TAKE = {
     "last_amount": parser.last_number,
     "currency": parser.currency,
     "text_only": parser.without_money,
+    "strip_currency": parser.strip_currency,
 }
 
 
@@ -35,6 +36,9 @@ class Profile:
     titles: tuple[str, ...] = ()          # judul-judul yang menandai awal satu advice
     owner_label: str = ""
     owner_names: tuple[str, ...] = ()
+    # column source name for the bare line printed right under the title,
+    # for companies whose own document number carries no label at all
+    reference_after_title: str = ""
 
     def matches(self, labels) -> bool:
         return all(m in labels for m in self.marks)
@@ -112,14 +116,32 @@ ASKRINDO = Profile(
 )
 
 # KMDastur
+#
+# Ownership is unresolved: JRP names the addressee in a printed field
+# ("Reinsurer : ASTRA BUANA"), but KMDastur's only sample has no such field at
+# all -- Astra Buana's name appears solely in the letterhead at the top of the
+# page. owner_label/owner_names are left unset until that is designed, which
+# means a file holding more than one advice is refused outright rather than
+# guessed at (see _labels_of): safe, but such a file would currently be
+# rejected rather than read. Confirm with more real KMDastur files whether
+# that shape ever occurs before this is called finished.
 KMDASTUR = Profile(
     key="kmdastur",
     name="KMDastur",
     marks=("Name of Reinsured", "Interest Insured"),
     bulleted_money=True,
+    titles=("definite loss advice",),
+    # KMDastur prints its own document number as a bare line under the title,
+    # with no label attached -- "307/CF/103/CPM/VII/2026" under "DEFINITE LOSS
+    # ADVICE". Column name asked for on 2026-09-04: matches the title above it
+    # for now; change the header below once a better name is decided.
+    reference_after_title="Definite Loss Advice",
+    # only the nett is kept, matching the rule for JRP's own amount block
+    ignore=("Indemnity", "Deductible"),
     reviewed=False,
     columns=(
         # Parameter yang akan diambil saat dibaca
+        Column("Definite Loss Advice", "Definite Loss Advice"),
         Column("Class of Business", "Class of Business"),
         Column("Policy Number", "Policy Number"),
         Column("Your Reference", "Your Reference"),
@@ -128,7 +150,9 @@ KMDASTUR = Profile(
         Column("Name of Insured", "Name of Insured"),
         Column("Interest Insured", "Interest Insured"),
         Column("Currency", "Total Sum Insured", "currency"),
-        Column("Total Sum Insured", "Total Sum Insured", "amount"),
+        # kept whole, not just the first number: "IDR X part of IDR Y" would
+        # lose the treaty total if only the cedant's share were taken
+        Column("Total Sum Insured", "Total Sum Insured", "strip_currency"),
         Column("Date of Loss", "Date of Loss"),
         Column("Cause of Loss", "Cause of Loss"),
         Column("Place of Loss", "Place of Loss"),

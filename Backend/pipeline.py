@@ -147,9 +147,13 @@ def _sections(document, profile: Profile | None) -> list[tuple[str, dict[str, st
             split_shared_lines=profile.split_shared_lines if profile else False,
             bulleted_money=profile.bulleted_money if profile else True,
         )
+        title = _advice_title(page, profile)
+        if title and profile and profile.reference_after_title:
+            ref = parser.title_reference(page.headings(), profile.titles)
+            if ref:
+                found[profile.reference_after_title] = ref
         if not found:
             continue
-        title = _advice_title(page, profile)
         if out and title is None and not _contradicts(out[-1][1], found, profile):
             out[-1][1].update(found)
         else:
