@@ -28,10 +28,16 @@ body {
                Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
   background-color: #0B4079;
+  /* layered back to front: fine dot texture, a soft glow behind where the
+     panel sits, the two corner mesh blobs, then the base diagonal wash */
   background-image:
+    radial-gradient(rgba(255, 255, 255, .09) 1px, transparent 1.5px),
+    radial-gradient(920px 640px at 50% 30%, rgba(255, 255, 255, .07), transparent 65%),
     radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .30), transparent 60%),
     radial-gradient(900px 560px at -10% 110%, rgba(72, 199, 235, .18), transparent 60%),
     linear-gradient(158deg, #0B4079 0%, #14589F 48%, #1E7FC0 100%);
+  background-size: 24px 24px, auto, auto, auto, auto;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
   background-attachment: fixed;
   min-height: 100vh;
   display: flex; flex-direction: column;
@@ -48,6 +54,11 @@ body {
   border-bottom: 1px solid rgba(11, 40, 74, .08);
   box-shadow: 0 1px 12px rgba(4, 26, 52, .12);
   position: sticky; top: 0; z-index: 10;
+}
+.site-header::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 100%);
+  opacity: .5;
 }
 .header-inner { display: flex; align-items: center; gap: 14px; padding: 12px 22px }
 .logo { height: 34px; width: auto; flex-shrink: 0 }
@@ -75,10 +86,26 @@ main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
 .panel {
   background: var(--surface);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: 0 1px 2px rgba(11, 40, 74, .08), 0 30px 60px -30px rgba(4, 26, 52, .55);
   padding: 30px 34px;
   margin-bottom: 18px;
 }
+
+/* The top accent bar and entrance motion are for the one main step panel --
+   .panel is reused for every note/skipped/table card in the results, where a
+   colored bar and a fade-in replaying on each would turn busy fast. Only the
+   step panel is a <section>; every reused instance is a <div>, so that alone
+   tells them apart with no markup change needed. */
+section.panel {
+  position: relative;
+  animation: rise .45s ease-out both;
+}
+section.panel::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 100%);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+@keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
 
 .step { display: grid; grid-template-columns: 30px 1fr; gap: 18px }
 .step + .step { margin-top: 26px }
@@ -86,8 +113,10 @@ main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
 .step-num {
   display: grid; place-items: center;
   width: 30px; height: 30px; border-radius: 50%;
-  background: var(--blue); color: #fff;
+  background: linear-gradient(155deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: #fff;
   font-size: 13.5px; font-weight: 700; line-height: 1;
+  box-shadow: 0 4px 10px -4px rgba(18, 93, 171, .65);
 }
 .step:not(:last-child) .step-rail::after {
   content: ""; position: absolute; left: 50%; top: 38px; bottom: -26px;
@@ -157,12 +186,13 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 #submit {
   border: none; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 650;
   padding: 12px 26px; border-radius: var(--radius-sm);
-  background: var(--blue); color: #fff; flex-shrink: 0;
-  box-shadow: 0 6px 16px -8px rgba(18, 93, 171, .8);
-  transition: background .15s, transform .1s, box-shadow .15s;
+  background: linear-gradient(155deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: #fff; flex-shrink: 0;
+  box-shadow: 0 8px 20px -8px rgba(18, 93, 171, .85);
+  transition: transform .12s, box-shadow .15s, filter .15s;
 }
-#submit:hover:not(:disabled) { background: var(--blue-dark) }
-#submit:active:not(:disabled) { transform: translateY(1px) }
+#submit:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px) }
+#submit:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 4px 10px -6px rgba(18, 93, 171, .7) }
 #submit:disabled { background: #B6C4D4; box-shadow: none; cursor: not-allowed }
 
 .btn-danger {
@@ -286,6 +316,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 
 .company-card.is-on {
   border-color: var(--blue); background: var(--blue-soft);
+  box-shadow: 0 0 0 3px rgba(18, 93, 171, .10);
 }
 .company-card.is-on .badge {
   background: var(--blue); color: var(--on-blue); border-color: var(--blue);
