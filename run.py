@@ -7,8 +7,6 @@ from pathlib import Path
 PORT = 8000
 ROOT = Path(__file__).parent
 
-# Loopback on purpose. 0.0.0.0 would also answer everyone else on the office
-# wifi, and what goes through here are real claim documents.
 HOST = "127.0.0.1"
 
 
@@ -16,17 +14,12 @@ def check_setup() -> None:
     from Backend import profiles
     from Backend.extract.pdf_reader import find_tesseract, ocr_available
 
-    print("Perusahaan didukung:", ", ".join(p.name for p in profiles.ALL))
     drafts = [p.name for p in profiles.DRAFTS]
-    if drafts:
-        print("Belum aktif (menunggu ditinjau):", ", ".join(drafts))
 
     if ocr_available():
-        print("OCR:", "AKTIF -", find_tesseract())
+        print("Status OCR:", "AKTIF -", find_tesseract())
     else:
-        print("OCR: TIDAK AKTIF - PDF hasil pindaian akan dilewati")
-        print("     pasang dengan: winget install --id UB-Mannheim.TesseractOCR")
-
+        print("Status OCR: TIDAK AKTIF")
 
 def start_server() -> subprocess.Popen:
     return subprocess.Popen(
@@ -37,37 +30,32 @@ def start_server() -> subprocess.Popen:
 
 
 def main() -> int:
-    print()
     print("DLA to Excel")
-    print()
     check_setup()
 
     print()
-    print("Menyalakan server...")
+    print("Turning server on...")
     server = start_server()
     time.sleep(3)
     if server.poll() is not None:
-        print("Server gagal menyala.")
+        print("Server failed to turn on!")
         return 1
 
     bar = "=" * 62
     print()
     print(bar)
-    print(" BUKA DI BROWSER:")
-    print(f"   http://localhost:{PORT}")
+    print("BUKA DI BROWSER:")
     print()
-    print(" Halaman dan pemrosesan ada di alamat yang sama, di laptop ini")
-    print(" saja. Tidak ada yang keluar ke internet.")
+    print(f"http://localhost:{PORT}")
+    print()
+    print("Press Ctrl+C to turn off server.")
     print(bar)
-    print()
-    print("Ctrl+C untuk mematikan.")
-    print()
 
     try:
         server.wait()
     except KeyboardInterrupt:
         print()
-        print("Mematikan backend...")
+        print("Turning off backend")
     finally:
         if server.poll() is None:
             server.terminate()
