@@ -334,6 +334,28 @@ def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
             [f"Tabel {i + 1}: {len(g.rows)} DLA, {len(g.headers) - 1} parameter"
              for i, g in enumerate(batch.groups)]))
 
+    # Two files can name the same claim -- a document reissued, or genuinely two
+    # copies of one. Neither is guessed here: picking the "right" one without
+    # seeing why they differ risks dropping the correct row, and staying quiet
+    # risks the amount being counted twice downstream. Both rows are kept, but
+    # flagged, so it surfaces without checking every claim number by hand.
+    claim_col = next((i for i, c in enumerate(profile.columns) if c.header == "Claim No"), None)
+    if claim_col is not None:
+        by_claim: dict[str, list[FileResult]] = {}
+        for f in batch.done:
+            value = f.values[claim_col] if claim_col < len(f.values) else ""
+            if value:
+                by_claim.setdefault(value, []).append(f)
+        dupes = {claim: files for claim, files in by_claim.items() if len(files) > 1}
+        if dupes:
+            batch.notes.append(Note(
+                f"{len(dupes)} Claim No muncul lebih dari sekali "
+                f"({sum(len(v) for v in dupes.values())} baris total). Kedua-duanya "
+                f"tetap ditulis; periksa apakah salah satunya revisi dari yang lain.",
+                [f"{claim}: " + ", ".join(f.name for f in files)
+                 for claim, files in dupes.items()],
+                level="warn"))
+
     extras = sorted({k for f in batch.done for k in f.extra})
     if extras:
         batch.notes.append(Note(
