@@ -11,10 +11,6 @@ function backendUrl() {
   return (saved || window.BACKEND_URL || "").replace(/\/+$/, "");
 }
 let API = backendUrl();
-
-// A tunnel address is remembered from the ?api= link, but it dies when run.py
-// is restarted. Rather than sit there saying "tidak aktif" forever, the page
-// drops the stale one and falls back to the built-in address once.
 let triedFallback = false;
 
 const $ = (id) => document.getElementById(id);
@@ -50,7 +46,6 @@ async function checkBackend() {
 
     pill.className = "status-pill status-live";
     text.textContent = "Siap";
-    $("offline-notice").classList.add("hidden");
     updateSubmit();
     return true;
   } catch (e) {
@@ -63,7 +58,6 @@ async function checkBackend() {
     }
     pill.className = "status-pill status-down";
     text.textContent = "Tidak aktif";
-    $("offline-notice").classList.remove("hidden");
     return false;
   }
 }

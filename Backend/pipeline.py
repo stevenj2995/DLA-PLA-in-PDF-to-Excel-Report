@@ -1,8 +1,9 @@
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import profiles
+from . import profiles, settings
 from .build import excelGenerator
 from .extract import parser, pdf_reader
 from .profiles import Profile
@@ -18,6 +19,7 @@ class FileResult:
     values: list[str] = field(default_factory=list)
     from_ocr: bool = False
     note: str = ""
+    kind: str = ""                     # DLA or PLA, from the advice's own title
     total_dla: int = 0                 # advices found in this file, ours or not
     astra_dla: int = 0                 # 0 or 1: whether one of them was ours
     shape: tuple[str, ...] = ()        # labels this advice actually carried
@@ -102,8 +104,8 @@ def _sections_merged(document) -> dict[str, str]:
     return found
 
 
-def _starts_advice(page, profile: Profile | None) -> bool:
-    """Whether this page begins a new advice.
+def _advice_title(page, profile: Profile | None) -> str | None:
+    """The title this page opens with, or None when it opens no new advice.
 
     The document's own title is the boundary. Counting pages and halving them
     would give the same answer on the files seen so far, but only because each
@@ -111,20 +113,32 @@ def _starts_advice(page, profile: Profile | None) -> bool:
     two pages, or one issued without a debit note, would throw that off.
     """
     if not profile or not profile.titles:
-        return True
+        return ""
     headings = [h.casefold() for h in page.headings()]
-    return any(title in h for title in profile.titles for h in headings)
+    for title in profile.titles:
+        if any(title in h for h in headings):
+            return title
+    return None
 
 
-def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
-    """Each advice in the file as its own set of label:value pairs.
+def _kind_of(title: str) -> str:
+    """'definite loss advice' -> 'DLA', 'preliminary loss advice' -> 'PLA'.
+
+    The initials are already the name everyone uses for these documents, so a
+    new title added to a profile names itself without another table to keep.
+    """
+    return "".join(word[0] for word in title.split() if word).upper() or "?"
+
+
+def _sections(document, profile: Profile | None) -> list[tuple[str, dict[str, str]]]:
+    """Each advice in the file as (kind, label:value pairs).
 
     One file can carry the same DLA reissued for every reinsurer on the risk,
     each with a different share. Pages after a title belong to the advice that
     title opened, so an advice spanning several pages still comes back whole.
     """
     skip = profile.skip_headings if profile else ()
-    out: list[dict[str, str]] = []
+    out: list[list] = []
     for page in document.pages:
         if any(h.casefold() in skip for h in page.headings()):
             continue
@@ -133,13 +147,22 @@ def _sections(document, profile: Profile | None) -> list[dict[str, str]]:
             split_shared_lines=profile.split_shared_lines if profile else False,
             bulleted_money=profile.bulleted_money if profile else True,
         )
+        title = _advice_title(page, profile)
+        if title and profile and profile.reference_after_title:
+            ref = parser.title_reference(page.headings(), profile.titles)
+            if ref:
+                found[profile.reference_after_title] = ref
+        if title and profile and profile.owner_from_letterhead and profile.owner_label:
+            letterhead = parser.letterhead_before_title(page.headings(), profile.titles)
+            if letterhead:
+                found.setdefault(profile.owner_label, letterhead)
         if not found:
             continue
-        if out and not _starts_advice(page, profile) and not _contradicts(out[-1], found, profile):
-            out[-1].update(found)
+        if out and title is None and not _contradicts(out[-1][1], found, profile):
+            out[-1][1].update(found)
         else:
-            out.append(found)
-    return out
+            out.append([_kind_of(title or ""), found])
+    return [(kind, found) for kind, found in out]
 
 
 def _contradicts(advice: dict, page: dict, profile: Profile | None) -> bool:
@@ -166,10 +189,11 @@ def _labels_of(document, profile: Profile | None):
     """The one advice addressed to us, how many others sat beside it, and why
     none was picked when that happens.
 
-    Returns (found, note, reason, total, other): `found` is None when nothing
-    was picked, in which case `reason` explains it. `total` is how many advices
-    the file held regardless of outcome, and `other` how many of those were not
-    ours -- both needed to answer "how many DLA in total, how many for Astra".
+    Returns (found, kind, note, reason, total, other): `found` is None when
+    nothing was picked, in which case `reason` explains it. `kind` is DLA or PLA
+    so the sheet can say which it read. `total` is how many advices the file
+    held regardless of outcome, and `other` how many of those were not ours --
+    both needed to answer "how many advices in total, how many for Astra".
 
     Whose advice it is gets checked however many the file holds. Trusting a
     lone advice without looking is what let files ending in REINS through: each
@@ -178,19 +202,23 @@ def _labels_of(document, profile: Profile | None):
     """
     sections = _sections(document, profile)
     total = len(sections)
+    kinds = {kind for kind, _ in sections}
+    # what to call these documents in a message: their own kind when they agree
+    what = next(iter(kinds)) if len(kinds) == 1 else "advice"
+
     if not sections:
-        return None, "", "tidak ditemukan DLA di berkas ini", 0, 0
+        return None, "", "", "tidak ditemukan DLA atau PLA di berkas ini", 0, 0
 
     label = profile.owner_label if profile else ""
     names = profile.owner_names if profile else ()
     if not label or not names:
         if total == 1:
-            return sections[0], "", "", 1, 0
-        return None, "", (f"berkas memuat {total} DLA, dan profil belum tahu "
-                          f"mana yang milik kita"), total, 0
+            return sections[0][1], sections[0][0], "", "", 1, 0
+        return None, "", "", (f"berkas memuat {total} {what}, dan profil belum "
+                              f"tahu mana yang milik kita"), total, 0
 
     def addressee(section) -> str:
-        return (section.get(label) or "?").strip()
+        return (section[1].get(label) or "?").strip()
 
     def is_ours(section) -> bool:
         return any(n in addressee(section).casefold() for n in names)
@@ -199,28 +227,34 @@ def _labels_of(document, profile: Profile | None):
     others = [addressee(s) for s in sections if not is_ours(s)]
 
     if len(mine) == 1:
+        kind, found = mine[0]
         if not others:
-            return mine[0], "", "", total, 0
-        note = (f"berkas memuat {total} DLA; diambil yang ditujukan ke "
-               f"{addressee(mine[0])}, sisanya dilewati ({', '.join(others)})")
-        return mine[0], note, "", total, len(others)
+            return found, kind, "", "", total, 0
+        note = (f"berkas memuat {total} {what}; diambil yang ditujukan ke "
+                f"{addressee(mine[0])}, sisanya dilewati ({', '.join(others)})")
+        return found, kind, note, "", total, len(others)
 
     if not mine:
         named = [x for x in others if x != "?"]
         if not named:
-            return None, "", (f"tidak ada baris '{label}' di berkas ini, jadi "
-                              f"tidak bisa dipastikan DLA ini ditujukan ke "
-                              f"siapa"), total, 0
-        return None, "", (f"DLA di berkas ini ditujukan ke {', '.join(named)}, "
-                          f"bukan ke kita"), total, total
+            if profile and profile.owner_from_letterhead:
+                empty_reason = (f"tidak ada kop surat yang terbaca di berkas ini, jadi "
+                                f"tidak bisa dipastikan {what} ini ditujukan ke siapa")
+            else:
+                empty_reason = (f"tidak ada baris '{label}' di berkas ini, jadi "
+                                f"tidak bisa dipastikan {what} ini ditujukan ke siapa")
+            return None, "", "", empty_reason, total, 0
+        return None, "", "", (f"{what} di berkas ini ditujukan ke "
+                              f"{', '.join(named)}, bukan ke kita"), total, total
 
-    return None, "", (f"{len(mine)} DLA di berkas ini sama-sama ditujukan ke "
-                      f"kita, tidak bisa ditentukan mana yang dipakai"), total, 0
+    return None, "", "", (f"{len(mine)} {what} di berkas ini sama-sama ditujukan "
+                          f"ke kita, tidak bisa ditentukan mana yang dipakai"), total, 0
 
 
-def read_one(path: Path, profile: Profile) -> FileResult:
+def read_one(path: Path, profile: Profile, document=None) -> FileResult:
     result = FileResult(path=path)
-    document = pdf_reader.read(path)
+    if document is None:
+        document = pdf_reader.read(path)
     if document.error:
         result.reason = document.error
         return result
@@ -230,11 +264,12 @@ def read_one(path: Path, profile: Profile) -> FileResult:
         return result
 
     result.from_ocr = document.used_ocr
-    found, note, reason, total, other = _labels_of(document, profile)
+    found, kind, note, reason, total, other = _labels_of(document, profile)
     result.total_dla = total
     if found is None:
         result.reason = reason
         return result
+    result.kind = kind
     result.note = note
     result.astra_dla = 1
     used = {c.source for c in profile.columns} | set(profile.ignore)
@@ -269,10 +304,31 @@ def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
             return batch
     batch.profile = profile
 
+    # Two passes on purpose. Pulling the printed text out of a PDF is work the
+    # processor does itself and holds the interpreter lock while doing, so
+    # spreading that across threads only made 200 files slower -- 3.4 seconds
+    # became 5.2. OCR is the opposite: it waits on Tesseract, so it gains almost
+    # everything from being done side by side. So the cheap pass runs straight
+    # through, and only the pages that turned out to be scanned are shared out.
+    documents = []
     for i, path in enumerate(paths, start=1):
         if progress:
             progress(i, len(paths), path.name)
-        batch.files.append(read_one(path, profile))
+        documents.append(pdf_reader.read(path, use_ocr=False))
+
+    if pdf_reader.ocr_available():
+        needing = [(i, pages) for i, d in enumerate(documents)
+                   if (pages := pdf_reader.scanned_pages(d))]
+        if needing:
+            workers = max(1, min(settings.OCR_WORKERS, len(needing)))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                jobs = [pool.submit(pdf_reader.apply_ocr, documents[i], pages)
+                        for i, pages in needing]
+                for job in as_completed(jobs):
+                    job.result()
+
+    batch.files = [read_one(path, profile, document)
+                   for path, document in zip(paths, documents)]
 
     if not batch.done:
         batch.rejected = "Tidak ada satu pun PDF yang bisa dibaca."
@@ -289,6 +345,28 @@ def run(paths, *, profile_key: str | None = None, progress=None) -> BatchResult:
             f"karena parameter antar dokumen memang berbeda-beda.",
             [f"Tabel {i + 1}: {len(g.rows)} DLA, {len(g.headers) - 1} parameter"
              for i, g in enumerate(batch.groups)]))
+
+    # Two files can name the same claim -- a document reissued, or genuinely two
+    # copies of one. Neither is guessed here: picking the "right" one without
+    # seeing why they differ risks dropping the correct row, and staying quiet
+    # risks the amount being counted twice downstream. Both rows are kept, but
+    # flagged, so it surfaces without checking every claim number by hand.
+    claim_col = next((i for i, c in enumerate(profile.columns) if c.header == "Claim No"), None)
+    if claim_col is not None:
+        by_claim: dict[str, list[FileResult]] = {}
+        for f in batch.done:
+            value = f.values[claim_col] if claim_col < len(f.values) else ""
+            if value:
+                by_claim.setdefault(value, []).append(f)
+        dupes = {claim: files for claim, files in by_claim.items() if len(files) > 1}
+        if dupes:
+            batch.notes.append(Note(
+                f"{len(dupes)} Claim No muncul lebih dari sekali "
+                f"({sum(len(v) for v in dupes.values())} baris total). Kedua-duanya "
+                f"tetap ditulis; periksa apakah salah satunya revisi dari yang lain.",
+                [f"{claim}: " + ", ".join(f.name for f in files)
+                 for claim, files in dupes.items()],
+                level="warn"))
 
     extras = sorted({k for f in batch.done for k in f.extra})
     if extras:
@@ -327,17 +405,22 @@ def _grouped(files: list[FileResult], profile: Profile) -> list[Group]:
     row of blanks and the sheet becomes hard to read. Kept apart, each table is
     exactly as wide as the documents in it.
     """
-    order: list[tuple[str, ...]] = []
-    buckets: dict[tuple[str, ...], list[FileResult]] = {}
+    # The kind is part of what makes a table: a preliminary advice and a
+    # definite one are different documents, so they get their own tables even
+    # in the unlikely event they carry the same parameters.
+    order: list[tuple] = []
+    buckets: dict[tuple, list[FileResult]] = {}
     for f in files:
-        if f.shape not in buckets:
-            buckets[f.shape] = []
-            order.append(f.shape)
-        buckets[f.shape].append(f)
+        key = (f.kind, f.shape)
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(f)
 
     groups: list[Group] = []
-    for shape in order:
-        members = buckets[shape]
+    for key in order:
+        kind, shape = key
+        members = buckets[key]
         keep = [i for i, c in enumerate(profile.columns) if c.source in shape]
         extras: list[str] = []
         for f in members:
@@ -348,7 +431,8 @@ def _grouped(files: list[FileResult], profile: Profile) -> list[Group]:
         rows = [[f.values[i] for i in keep] + [f.extra.get(x, "") for x in extras] + [f.name]
                 for f in members]
         groups.append(Group(headers=headers, rows=rows, files=members,
-                            caption=f"{len(rows)} DLA - {len(headers) - 1} parameter"))
+                            caption=f"{len(rows)} {kind or 'dokumen'} - "
+                                    f"{len(headers) - 1} parameter"))
 
     # the widest table first, so the sheet opens on the main one
     groups.sort(key=lambda g: (-len(g.rows), -len(g.headers)))

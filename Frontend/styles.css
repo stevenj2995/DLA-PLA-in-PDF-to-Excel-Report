@@ -28,10 +28,14 @@ body {
                Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
   background-color: #0B4079;
+  /* layered back to front: a soft glow behind where the panel sits, the two
+     corner mesh blobs, then the base diagonal wash */
   background-image:
-    radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .30), transparent 60%),
-    radial-gradient(900px 560px at -10% 110%, rgba(72, 199, 235, .18), transparent 60%),
+    radial-gradient(1000px 720px at 50% 28%, rgba(255, 255, 255, .14), transparent 62%),
+    radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .42), transparent 60%),
+    radial-gradient(900px 560px at -10% 110%, rgba(72, 199, 235, .28), transparent 60%),
     linear-gradient(158deg, #0B4079 0%, #14589F 48%, #1E7FC0 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
   background-attachment: fixed;
   min-height: 100vh;
   display: flex; flex-direction: column;
@@ -44,23 +48,45 @@ body {
 
 /* header */
 .site-header {
-  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+  background: linear-gradient(180deg, #fff 0%, #FBFDFF 100%);
   border-bottom: 1px solid rgba(11, 40, 74, .08);
   box-shadow: 0 1px 12px rgba(4, 26, 52, .12);
-  position: sticky; top: 0; z-index: 10;
 }
-.header-inner { display: flex; align-items: center; gap: 14px; padding: 12px 22px }
-.logo { height: 34px; width: auto; flex-shrink: 0 }
+.site-header::before {
+  /* a faint brand-colour wash behind the logo side, so the bar itself carries
+     a little of the blue rather than reading as plain white */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(420px 90px at 0% 50%, rgba(18, 93, 171, .07), transparent 75%);
+}
+.site-header::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px;
+  background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 55%, var(--blue) 100%);
+  box-shadow: 0 2px 8px -1px rgba(18, 93, 171, .5);
+}
+.header-inner { position: relative; display: flex; align-items: center; gap: 16px; padding: 13px 22px }
+.logo {
+  height: 32px; width: auto; flex-shrink: 0;
+  padding: 6px 10px; border-radius: 11px;
+  background: linear-gradient(155deg, var(--blue-soft) 0%, #fff 100%);
+  box-shadow: 0 3px 10px -4px rgba(18, 93, 171, .35), inset 0 0 0 1px var(--line);
+}
 .brand {
-  flex: 1; min-width: 0;
-  font-size: 16.5px; font-weight: 650; letter-spacing: -.15px; color: var(--text);
+  position: relative; flex: 1; min-width: 0; padding-left: 16px;
+  font-size: 17px; font-weight: 700; letter-spacing: -.2px; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand::before {
+  /* a thin divider between the logo chip and the wordmark */
+  content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 1px;
+  background: linear-gradient(180deg, transparent, var(--line-strong), transparent);
 }
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
   padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
   background: var(--surface); border: 1px solid var(--line-strong); color: var(--text-soft);
+  box-shadow: 0 2px 6px -2px rgba(11, 40, 74, .18);
 }
 .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor }
 .status-live { color: var(--green); border-color: #B7E3D2; background: #F3FBF8 }
@@ -75,19 +101,32 @@ main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
 .panel {
   background: var(--surface);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: 0 1px 2px rgba(11, 40, 74, .08), 0 30px 60px -30px rgba(4, 26, 52, .55);
   padding: 30px 34px;
   margin-bottom: 18px;
 }
+
+/* The top accent bar and entrance motion are for the one main step panel --
+   .panel is reused for every note/skipped/table card in the results, where a
+   colored bar and a fade-in replaying on each would turn busy fast. Only the
+   step panel is a <section>; every reused instance is a <div>, so that alone
+   tells them apart with no markup change needed. */
+section.panel {
+  position: relative;
+  animation: rise .45s ease-out both;
+}
+@keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
 
 .step { display: grid; grid-template-columns: 30px 1fr; gap: 18px }
 .step + .step { margin-top: 26px }
 .step-rail { position: relative }
 .step-num {
   display: grid; place-items: center;
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--blue); color: #fff;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(155deg, var(--cyan) 0%, var(--blue) 55%, var(--blue-dark) 100%);
+  color: #fff;
   font-size: 13.5px; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 4px var(--blue-soft), 0 6px 14px -4px rgba(18, 93, 171, .75);
 }
 .step:not(:last-child) .step-rail::after {
   content: ""; position: absolute; left: 50%; top: 38px; bottom: -26px;
@@ -157,12 +196,13 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 #submit {
   border: none; cursor: pointer; font: inherit; font-size: 14.5px; font-weight: 650;
   padding: 12px 26px; border-radius: var(--radius-sm);
-  background: var(--blue); color: #fff; flex-shrink: 0;
-  box-shadow: 0 6px 16px -8px rgba(18, 93, 171, .8);
-  transition: background .15s, transform .1s, box-shadow .15s;
+  background: linear-gradient(155deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: #fff; flex-shrink: 0;
+  box-shadow: 0 8px 20px -8px rgba(18, 93, 171, .85);
+  transition: transform .12s, box-shadow .15s, filter .15s;
 }
-#submit:hover:not(:disabled) { background: var(--blue-dark) }
-#submit:active:not(:disabled) { transform: translateY(1px) }
+#submit:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px) }
+#submit:active:not(:disabled) { transform: translateY(1px); box-shadow: 0 4px 10px -6px rgba(18, 93, 171, .7) }
 #submit:disabled { background: #B6C4D4; box-shadow: none; cursor: not-allowed }
 
 .btn-danger {
@@ -208,7 +248,9 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
   background: var(--surface); border-radius: var(--radius-sm);
   border-left: 4px solid var(--line-strong);
   padding: 13px 15px; box-shadow: var(--shadow);
+  transition: transform .15s, box-shadow .15s;
 }
+.stat:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgba(4, 26, 52, .4) }
 .stat .value { font-size: 23px; font-weight: 700; line-height: 1.15 }
 .stat .label { font-size: 11.5px; color: var(--text-faint) }
 
@@ -286,6 +328,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 
 .company-card.is-on {
   border-color: var(--blue); background: var(--blue-soft);
+  box-shadow: 0 0 0 3px rgba(18, 93, 171, .22), 0 8px 18px -10px rgba(18, 93, 171, .5);
 }
 .company-card.is-on .badge {
   background: var(--blue); color: var(--on-blue); border-color: var(--blue);
