@@ -50,27 +50,45 @@ body {
 
 /* header */
 .site-header {
-  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+  background: linear-gradient(180deg, #fff 0%, #FBFDFF 100%);
   border-bottom: 1px solid rgba(11, 40, 74, .08);
   box-shadow: 0 1px 12px rgba(4, 26, 52, .12);
-  position: sticky; top: 0; z-index: 10;
+}
+.site-header::before {
+  /* a faint brand-colour wash behind the logo side, so the bar itself carries
+     a little of the blue rather than reading as plain white */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(420px 90px at 0% 50%, rgba(18, 93, 171, .07), transparent 75%);
 }
 .site-header::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px;
-  background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 100%);
+  background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 55%, var(--blue) 100%);
+  box-shadow: 0 2px 8px -1px rgba(18, 93, 171, .5);
 }
-.header-inner { display: flex; align-items: center; gap: 14px; padding: 12px 22px }
-.logo { height: 34px; width: auto; flex-shrink: 0 }
+.header-inner { position: relative; display: flex; align-items: center; gap: 16px; padding: 13px 22px }
+.logo {
+  height: 32px; width: auto; flex-shrink: 0;
+  padding: 6px 10px; border-radius: 11px;
+  background: linear-gradient(155deg, var(--blue-soft) 0%, #fff 100%);
+  box-shadow: 0 3px 10px -4px rgba(18, 93, 171, .35), inset 0 0 0 1px var(--line);
+}
 .brand {
-  flex: 1; min-width: 0;
-  font-size: 16.5px; font-weight: 650; letter-spacing: -.15px; color: var(--text);
+  position: relative; flex: 1; min-width: 0; padding-left: 16px;
+  font-size: 17px; font-weight: 700; letter-spacing: -.2px; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand::before {
+  /* a thin divider between the logo chip and the wordmark */
+  content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 1px;
+  background: linear-gradient(180deg, transparent, var(--line-strong), transparent);
 }
 
 .status-pill {
   display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
   padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
   background: var(--surface); border: 1px solid var(--line-strong); color: var(--text-soft);
+  box-shadow: 0 2px 6px -2px rgba(11, 40, 74, .18);
 }
 .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor }
 .status-live { color: var(--green); border-color: #B7E3D2; background: #F3FBF8 }
