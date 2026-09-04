@@ -85,10 +85,23 @@ JRP = Profile(
 )
 
 # Profile Askrindo
+# Diverifikasi ke satu dokumen asli. Reinsurer tertulis eksplisit di badan
+# dokumen ("Reinsurer : PT. Asuransi Astra Buana"), jadi deteksi pemilik bisa
+# memakai mekanisme yang sama seperti jrp -- tidak perlu solusi baru seperti
+# kmdastur. Belum diminta konfirmasi steven soal aturan nett-only dan uraian
+# objek yang menyatu di Total Sum Insured; masih di drafts sampai itu jelas.
 ASKRINDO = Profile(
     key="askrindo",
     name="Askrindo",
     marks=("No DLA", "Askrindo Share"),
+    titles=("definite loss advice",),
+    owner_label="Reinsurer",
+    owner_names=("astra buana", "asuransi astra buana", "asuransi astra"),
+    # "Loss Amount 100% : Loss : IDR ..." punya sub-label bertitik dua sendiri
+    # di baris yang sama; nilai bersihnya diambil dari "Net Amount" di baris
+    # lain, jadi baris ini dan Deductible dibuang supaya tidak bocor jadi
+    # kolom tambahan berisi teks "Loss : IDR ..." yang berantakan.
+    ignore=("Loss Amount 100%", "Deductible"),
     columns=(
         # Parameter yang akan diambil saat dibaca
         Column("No DLA", "No DLA"),
