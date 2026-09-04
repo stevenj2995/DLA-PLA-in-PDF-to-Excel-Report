@@ -46,8 +46,8 @@ JRP = Profile(
     marks=("Ref No", "Risk Cover", "Appointed Adjuster"),
     skip_headings=("debit note", "credit note"),
     ignore=("Definite Claim Amount", "Deductible"),
-    # "PROJECT NAME - PLA" DLA/PLA to Excel: this project reads both kinds of
-    # advice, so a file re-issuing PLAs per reinsurer splits the same way DLAs do.
+    # this project reads both kinds of advice, so a file re-issuing PLAs per
+    # reinsurer splits the same way a file re-issuing DLAs does.
     titles=("definite loss advice", "preliminary loss advice"),
     owner_label="Reinsurer",
     owner_names=("astra buana", "asuransi astra buana", "asuransi astra"),
