@@ -11,10 +11,6 @@ function backendUrl() {
   return (saved || window.BACKEND_URL || "").replace(/\/+$/, "");
 }
 let API = backendUrl();
-
-// A tunnel address is remembered from the ?api= link, but it dies when run.py
-// is restarted. Rather than sit there saying "tidak aktif" forever, the page
-// drops the stale one and falls back to the built-in address once.
 let triedFallback = false;
 
 const $ = (id) => document.getElementById(id);

@@ -31,10 +31,10 @@ body {
   /* layered back to front: fine dot texture, a soft glow behind where the
      panel sits, the two corner mesh blobs, then the base diagonal wash */
   background-image:
-    radial-gradient(rgba(255, 255, 255, .09) 1px, transparent 1.5px),
-    radial-gradient(920px 640px at 50% 30%, rgba(255, 255, 255, .07), transparent 65%),
-    radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .30), transparent 60%),
-    radial-gradient(900px 560px at -10% 110%, rgba(72, 199, 235, .18), transparent 60%),
+    radial-gradient(rgba(255, 255, 255, .20) 1.6px, transparent 2px),
+    radial-gradient(1000px 720px at 50% 28%, rgba(255, 255, 255, .14), transparent 62%),
+    radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .42), transparent 60%),
+    radial-gradient(900px 560px at -10% 110%, rgba(72, 199, 235, .28), transparent 60%),
     linear-gradient(158deg, #0B4079 0%, #14589F 48%, #1E7FC0 100%);
   background-size: 24px 24px, auto, auto, auto, auto;
   background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
@@ -56,9 +56,8 @@ body {
   position: sticky; top: 0; z-index: 10;
 }
 .site-header::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  content: ""; position: absolute; left: 0; right: 0; bottom: -3px; height: 3px;
   background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 100%);
-  opacity: .5;
 }
 .header-inner { display: flex; align-items: center; gap: 14px; padding: 12px 22px }
 .logo { height: 34px; width: auto; flex-shrink: 0 }
@@ -101,9 +100,10 @@ section.panel {
   animation: rise .45s ease-out both;
 }
 section.panel::before {
-  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 6px;
   background: linear-gradient(90deg, var(--blue) 0%, var(--cyan) 100%);
   border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 2px 10px -2px rgba(18, 93, 171, .55);
 }
 @keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
 
@@ -112,11 +112,11 @@ section.panel::before {
 .step-rail { position: relative }
 .step-num {
   display: grid; place-items: center;
-  width: 30px; height: 30px; border-radius: 50%;
-  background: linear-gradient(155deg, var(--blue) 0%, var(--blue-dark) 100%);
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(155deg, var(--cyan) 0%, var(--blue) 55%, var(--blue-dark) 100%);
   color: #fff;
   font-size: 13.5px; font-weight: 700; line-height: 1;
-  box-shadow: 0 4px 10px -4px rgba(18, 93, 171, .65);
+  box-shadow: 0 0 0 4px var(--blue-soft), 0 6px 14px -4px rgba(18, 93, 171, .75);
 }
 .step:not(:last-child) .step-rail::after {
   content: ""; position: absolute; left: 50%; top: 38px; bottom: -26px;
@@ -238,7 +238,9 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
   background: var(--surface); border-radius: var(--radius-sm);
   border-left: 4px solid var(--line-strong);
   padding: 13px 15px; box-shadow: var(--shadow);
+  transition: transform .15s, box-shadow .15s;
 }
+.stat:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgba(4, 26, 52, .4) }
 .stat .value { font-size: 23px; font-weight: 700; line-height: 1.15 }
 .stat .label { font-size: 11.5px; color: var(--text-faint) }
 
@@ -316,7 +318,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 
 .company-card.is-on {
   border-color: var(--blue); background: var(--blue-soft);
-  box-shadow: 0 0 0 3px rgba(18, 93, 171, .10);
+  box-shadow: 0 0 0 3px rgba(18, 93, 171, .22), 0 8px 18px -10px rgba(18, 93, 171, .5);
 }
 .company-card.is-on .badge {
   background: var(--blue); color: var(--on-blue); border-color: var(--blue);
