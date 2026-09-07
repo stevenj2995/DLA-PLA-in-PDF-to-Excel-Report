@@ -16,27 +16,23 @@ RE_BULLET_MONEY = re.compile(
     r"^[:\s]*(?P<label>[A-Za-z][A-Za-z ./&'\-]{1,38}?)\s*:?\s+"
     r"(?P<value>(?:" + CURRENCIES + r")\s*\(?-?[\d.,]+\)?)\s*$", re.I)
 
-# A heading and its first bulleted child sharing one printed line, as in
-# "Definite Loss Amount : Indemnity IDR 90,500,000.00" -- the child that
-# follows, "Deductible" and "Nett Amount", print on their own lines each
-# starting with a bare colon and are already caught by RE_BULLET_MONEY.
 RE_NESTED_BULLET = re.compile(
     r"^(?P<label>[A-Za-z][A-Za-z ./&'\-]{1,38}?)\s+"
     r"(?P<value>(?:" + CURRENCIES + r")\s*\(?-?[\d.,]+\)?)\s*$", re.I)
 
+RE_SHARE_PCT = re.compile(
+    r"^(?P<label>[A-Za-z][A-Za-z ./&'\-]{1,38}?)\s+[\d.,]+%\s+of\s+[\d.,]+%\s*:\s*(?P<value>.*)$", re.I)
+
 RE_LETTER_CLOSE = re.compile(
     r"^[A-Z][A-Za-z .]{2,24},\s+(?:\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},\s+\d{4})\s*$")
-
 
 def is_label(text: str) -> bool:
     letters = sum(c.isalpha() for c in text)
     solid = len(text.replace(" ", ""))
     return letters >= 2 and solid > 0 and letters / solid >= 0.4
 
-
 def is_junk(line: str) -> bool:
     return bool(RE_GLYPH.match(line) or RE_SIGN_DATE.match(line) or RE_JUNK.search(line))
-
 
 def pairs(lines: list[str], *, split_shared_lines: bool = False,
           bulleted_money: bool = False) -> dict[str, str]:
@@ -49,11 +45,17 @@ def pairs(lines: list[str], *, split_shared_lines: bool = False,
             continue
 
         pair = RE_PAIR.match(line)
+        if not pair:
+            share = RE_SHARE_PCT.match(line)
+            if share:
+                label = " ".join(share.group("label").split())
+                found[label] = share.group("value").strip()
+                last = label
+                continue
         if bulleted_money and not pair:
             bullet = RE_BULLET_MONEY.match(line)
             if bullet:
-                found.setdefault(" ".join(bullet.group("label").split()),
-                                 bullet.group("value").strip())
+                found.setdefault(" ".join(bullet.group("label").split()), bullet.group("value").strip())
                 last = None
                 continue
         if not pair:
@@ -71,49 +73,34 @@ def pairs(lines: list[str], *, split_shared_lines: bool = False,
         if bulleted_money:
             nested = RE_NESTED_BULLET.match(value)
             if nested:
-                found.setdefault(" ".join(nested.group("label").split()),
-                                 nested.group("value").strip())
+                found.setdefault(" ".join(nested.group("label").split()), nested.group("value").strip())
                 value = ""
         if split_shared_lines:
             second = RE_SECOND_PAIR.search(" " + value)
             if second:
                 value = value[: second.start()].strip()
-                found.setdefault(" ".join(second.group("label").split()),
-                                 second.group("value").strip())
+                found.setdefault(" ".join(second.group("label").split()), second.group("value").strip())
         found[label] = value
         last = label
     return found
-
 
 def currency(text: str) -> str:
     m = RE_CURRENCY.search(text or "")
     return m.group(1).upper() if m else ""
 
-
 def first_number(text: str) -> str:
     m = RE_NUMBER.search(text or "")
     return m.group(0) if m else ""
-
 
 def last_number(text: str) -> str:
     found = RE_NUMBER.findall(text or "")
     return found[-1] if found else ""
 
-
 def amount(text: str) -> str:
     m = RE_AMOUNT.search(text or "")
     return m.group("amount") if m else first_number(text)
 
-
 def strip_currency(text: str) -> str:
-    """'IDR 90,500,000.00' -> '90,500,000.00', kept exactly as printed.
-
-    Unlike amount(), which reformats down to bare digits, this keeps the
-    value whole -- unless a second currency token trails the first ('...
-    part of IDR 15,190,997,639.00'), which so far has only shown up as a
-    data-entry anomaly rather than a real second figure. When that happens
-    only the first amount is kept.
-    """
     m = RE_CURRENCY.search(text or "")
     if not m:
         return (text or "").strip()
@@ -124,16 +111,7 @@ def strip_currency(text: str) -> str:
     first = RE_NUMBER.search(value[:second.start()])
     return first.group(0) if first else value[:second.start()].strip()
 
-
 def title_reference(headings: list[str], titles: tuple[str, ...]) -> str | None:
-    """The bare line right under the document's own title, when there is one.
-
-    Some companies print their own reference number as a plain line with no
-    label attached -- KMDastur's '307/CF/103/CPM/VII/2026' sits directly under
-    'DEFINITE LOSS ADVICE'. A line that is itself a label:value pair is an
-    ordinary field, not this, so it is left alone rather than misread as a
-    reference.
-    """
     for i, line in enumerate(headings):
         if not any(t in line.casefold() for t in titles):
             continue
@@ -145,22 +123,11 @@ def title_reference(headings: list[str], titles: tuple[str, ...]) -> str | None:
         return candidate.strip()
     return None
 
-
 def letterhead_before_title(headings: list[str], titles: tuple[str, ...]) -> str | None:
-    """The first line printed above the document's own title -- the
-    letterhead's own name, when there is one.
-
-    Some companies never print who an advice is addressed to as a labelled
-    field at all: KMDastur's only signal for that is the letterhead art at
-    the very top of the page ('PT. ASURANSI ASTRA BUANA'), nothing else in
-    the body names the addressee.
-    """
     for i, line in enumerate(headings):
         if any(t in line.casefold() for t in titles):
             return headings[0].strip() if i > 0 else None
     return None
 
-
 def without_money(text: str) -> str:
-    """'Equipment IDR 49,185,430,585.00' -> 'Equipment'."""
     return RE_CURRENCY.split(text or "", maxsplit=1)[0].strip(" :-,")

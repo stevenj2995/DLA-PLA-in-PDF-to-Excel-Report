@@ -3,5 +3,9 @@ openpyxl>=3.1
 fastapi>=0.110
 uvicorn>=0.27
 python-multipart>=0.0.9
+
 pytesseract>=0.3.10
 Pillow>=10.0
+
+# If tesseract is not installed, you can install it using the following command:
+# winget install UB-Mannheim.TesseractOCR

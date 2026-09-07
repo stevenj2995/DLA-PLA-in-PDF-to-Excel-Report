@@ -10,21 +10,10 @@ HEADER_FILL = PatternFill("solid", fgColor="1F3864")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 CAPTION_FONT = Font(bold=True, size=12, color="1F3864")
 MIN_WIDTH, MAX_WIDTH = 10, 52
-GAP = 2  # blank rows between tables
+GAP = 2  # gap between tables
 
 
 def write(path: str | Path, tables) -> Path:
-    """One sheet holding one table per set of parameters.
-
-    Advices that carry different parameters are kept in separate tables rather
-    than merged into one wide one. Merging means the columns become the union of
-    everything seen, so a document missing half of them leaves a row of blanks
-    and the sheet turns unreadable.
-
-    Every value is written as text on purpose: it is lifted from the PDF exactly
-    as printed, so Excel cannot reinterpret a number or a date into something
-    the letter never said.
-    """
     path = Path(path)
     wb = Workbook()
     ws = wb.active
@@ -56,7 +45,6 @@ def write(path: str | Path, tables) -> Path:
                 cell.number_format = "@"
             at += 1
 
-        # only the first table can carry the sheet's filter and frozen header
         if n == 0:
             ws.freeze_panes = ws.cell(row=head_at + 1, column=1).coordinate
             last = get_column_letter(len(headers))
@@ -71,7 +59,6 @@ def write(path: str | Path, tables) -> Path:
 
 
 def _fit_columns(ws, tables, widest: int) -> None:
-    """Width per column position, measured across every table on the sheet."""
     for i in range(1, widest + 1):
         longest = 0
         for table in tables:

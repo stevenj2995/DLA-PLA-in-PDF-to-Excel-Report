@@ -1,25 +1,10 @@
-"""Memeriksa hasil Excel terhadap PDF sumbernya.
-
-Dipakai setelah satu batch selesai, untuk memastikan isi Excel benar-benar
-sama dengan isi dokumennya. Berdiri sendiri: tidak memanggil apa pun dari
-Backend/, melainkan membaca ulang PDF dengan cara sendiri. Kalau pembaca di
-Backend/ salah, pembaca di sini tidak ikut salah, dan selisihnya ketahuan.
-
-    python cek.py "PDF Files" hasil.xlsx
-
-Dua pemeriksaan berjalan. Yang pertama membandingkan tiap sel dengan hasil
-pembacaan ulang. Yang kedua tidak bergantung pada pembacaan sama sekali:
-dokumen menulis "IDR X x P% = Y", jadi Your Share dibagi Definite Claim
-Amount wajib jatuh di persentase bulat. Baris yang mencampur dua advice
-akan memberi rasio yang janggal.
-"""
 from __future__ import annotations
 import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 import openpyxl
 
 CURRENCIES = r"IDR|USD|SGD|EUR|AUD|JPY|GBP|Rp"
@@ -46,7 +31,6 @@ def lines_of(page) -> list[str]:
 
 
 def pairs_of(lines: list[str]) -> dict[str, str]:
-    """Label -> nilai, dengan baris sambungan disatukan dan kaki surat dibuang."""
     found: dict[str, str] = {}
     last: str | None = None
     for raw in lines:
@@ -67,7 +51,6 @@ def pairs_of(lines: list[str]) -> dict[str, str]:
 
 
 def astra_advice(path: Path) -> dict[str, str] | None:
-    """Advice di berkas ini yang ditujukan ke Astra Buana, kalau ada."""
     with fitz.open(path) as pdf:
         for page in pdf:
             lines = lines_of(page)
@@ -97,24 +80,19 @@ def last_number(text: str) -> str:
 
 
 def without_money(text: str) -> str:
-    return re.split(r"\b(?:" + CURRENCIES + r")\b", text or "",
-                    maxsplit=1, flags=re.I)[0].strip(" :-,")
+    return re.split(r"\b(?:" + CURRENCIES + r")\b", text or "", maxsplit=1, flags=re.I)[0].strip(" :-,")
 
 
-# kolom Excel -> (label sumber, cara mengambil nilainya)
 RULES: dict[str, tuple[str, object]] = {
     "Insured Interest": ("Insured Interest", without_money),
     "Total Sum Insured": ("Total Sum Insured", amount),
     "Definite Claim Amount": ("Nett Amount", amount),
     "Your Share on Nett Loss": ("Your Share on Nett Loss", last_number),
 }
-# kolom Currency mengambil mata uang dari kolom nominal tepat setelahnya
-MONEY_AFTER_CURRENCY = ("Total Sum Insured", "Definite Claim Amount",
-                        "Your Share on Nett Loss")
+MONEY_AFTER_CURRENCY = ("Total Sum Insured", "Definite Claim Amount", "Your Share on Nett Loss")
 
 
 def read_sheet(path: Path) -> list[tuple[list[str], list[list]]]:
-    """Tiap tabel di sheet sebagai (header, baris)."""
     ws = openpyxl.load_workbook(path, data_only=True).active
     starts = [r for r in range(1, ws.max_row + 1)
               if str(ws.cell(r, 1).value or "").startswith("Tabel")] or [0]
@@ -139,8 +117,6 @@ def compare(folder: Path, workbook: Path) -> int:
     expected = {p.name: a for p in pdfs if (a := astra_advice(p)) is not None}
     tables = read_sheet(workbook)
 
-    # Header dan nilai disimpan berpasangan, bukan sebagai dict: kolom Currency
-    # muncul beberapa kali di satu tabel, dan dict akan membuang kembarannya.
     in_sheet: dict[str, tuple[list[str], list]] = {}
     for headers, rows in tables:
         if "Sumber PDF" not in headers:

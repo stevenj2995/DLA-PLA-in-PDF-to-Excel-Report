@@ -62,7 +62,7 @@ async function checkBackend() {
   }
 }
 
-// ---- pilih berkas ----
+// ---- pilih file ----
 let chosen = [];
 const dropzone = $("dropzone"), fileInput = $("file-input");
 
@@ -100,9 +100,6 @@ function addFiles(list) {
   renderFileList();
 }
 
-// A batch runs to a couple of hundred files, and listing them all buries the
-// rest of the page. Only the first few are shown until asked otherwise, and the
-// full list is a box that scrolls on its own rather than stretching the page.
 const PREVIEW_FILES = 5;
 let showAllFiles = false;
 
@@ -158,14 +155,11 @@ function renderFileList() {
   updateSubmit();
 }
 
-// ---- tombol ----
+// ---- button ----
 const submit = $("submit"), submitHint = $("submit-hint"), code = $("code");
 const company = $("company");
 code.addEventListener("input", updateSubmit);
 
-// Drawn as cards rather than a dropdown: there are only a handful of companies,
-// and the ones not in service yet are worth showing as such instead of being
-// invisible.
 function fillCompanies(list, drafts) {
   const grid = $("company-grid");
   if (grid.dataset.filled === "1") return;
@@ -210,10 +204,10 @@ function updateSubmit() {
   const hasCompany = Boolean(company.value);
   const hasCode = !needsCode || code.value.trim().length > 0;
   submit.disabled = !(hasFiles && hasCompany && hasCode);
-  if (!hasCompany) submitHint.textContent = "Pilih perusahaannya dulu.";
-  else if (!hasFiles) submitHint.textContent = "Pilih berkas ZIP atau PDF.";
-  else if (!hasCode) submitHint.textContent = "Masukkan kode akses.";
-  else submitHint.textContent = chosen.length + " berkas siap diproses";
+  if (!hasCompany) submitHint.textContent = "Please choose a company first!.";
+  else if (!hasFiles) submitHint.textContent = "Select ZIP or PDF File!";
+  else if (!hasCode) submitHint.textContent = "Input access code!";
+  else submitHint.textContent = chosen.length + " file ready for processing";
 }
 
 function showError(m) { const b = $("error"); b.textContent = m; b.classList.remove("hidden"); }
@@ -238,7 +232,7 @@ submit.addEventListener("click", async () => {
     renderResults(d);
   } catch (e) {
     showError(e.message === "Failed to fetch"
-      ? "Tidak bisa menghubungi backend. Komputer pemroses mungkin sedang mati."
+      ? "Backend is not active!"
       : e.message);
     checkBackend();
   } finally {
@@ -247,7 +241,7 @@ submit.addEventListener("click", async () => {
   }
 });
 
-// ---- hasil ----
+// ---- result ----
 let currentSession = null;
 
 function renderResults(d) {
@@ -255,7 +249,7 @@ function renderResults(d) {
   $("finish-result").classList.add("hidden");
   $("finish-btn").classList.remove("hidden");
   $("finish-btn").disabled = false;
-  $("finish-btn").textContent = "Saya sudah selesai - hapus data saya sekarang";
+  $("finish-btn").textContent = "DELETE ALL DATA";
 
   const s = d.summary || {};
   $("stats").innerHTML = [
@@ -295,8 +289,6 @@ function renderResults(d) {
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// Every note is one line. The list behind it -- which can run to seventy file
-// names -- stays folded until asked for, so the page reads at a glance.
 function renderNotes(notes) {
   if (!notes.length) return "";
   return '<div class="panel note-panel"><h3 class="panel-title">Catatan</h3><ul class="note-list">' +
@@ -311,8 +303,6 @@ function renderNotes(notes) {
       "</li>").join("") + "</ul></div>";
 }
 
-// Skipped files are grouped by why, so twenty files sharing a reason are one
-// line instead of twenty cards.
 function renderSkipped(groups) {
   if (!groups.length) return "";
   const total = groups.reduce((n, g) => n + g.files.length, 0);
@@ -325,8 +315,6 @@ function renderSkipped(groups) {
       "</ul></details></li>").join("") + "</ul></div>";
 }
 
-// One table per set of parameters, each in its own card so the caption stays
-// readable against the page behind it.
 function renderPreview(d) {
   const groups = d.groups || [];
   if (!groups.length) return "";
@@ -347,9 +335,9 @@ function renderPreview(d) {
   }).join("");
 }
 
-// ---- hapus data ----
+// ---- delete file ----
 const CONFIRM_TEXT =
-  "Excel hasil akan dihapus dari server sekarang juga. Pastikan Anda sudah mengunduhnya. Lanjutkan?";
+  "Excel will be deleted from the server! Make sure you have already download it!";
 
 $("finish-btn").addEventListener("click", async () => {
   if (!currentSession) return;
@@ -357,11 +345,11 @@ $("finish-btn").addEventListener("click", async () => {
 
   const btn = $("finish-btn");
   btn.disabled = true;
-  btn.textContent = "Menghapus...";
+  btn.textContent = "Deleting...";
 
   try {
     const r = await fetch(API + "/api/finish/" + encodeURIComponent(currentSession),
-                          { method: "POST" });
+      { method: "POST" });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "Gagal menghapus (HTTP " + r.status + ")");
 
@@ -378,9 +366,9 @@ $("finish-btn").addEventListener("click", async () => {
     currentSession = null;
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = "Coba hapus lagi";
+    btn.textContent = "Try deleting again!";
     showError(e.message === "Failed to fetch"
-      ? "Backend sedang offline. Data tetap terhapus otomatis saat waktunya habis."
+      ? "Backend is offline. Data will still be deleted!"
       : e.message);
   }
 });

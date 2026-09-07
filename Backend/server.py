@@ -16,8 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from . import pipeline, profiles, settings
 from .extract.pdf_reader import ocr_available
 
-# Local use only. The page is served by this same process, so nothing legitimate
-# calls in from another origin -- and a public origin has no business here.
+# Local use only
 ORIGIN_PATTERN = r"http://(localhost|127\.0\.0\.1)(:\d+)?"
 
 app = FastAPI(title="DLA to Excel", docs_url=None, redoc_url=None)
@@ -41,13 +40,6 @@ def _drop_expired() -> None:
 
 
 def _unpack_zip(archive: Path, into: Path) -> list[Path]:
-    """PDFs out of an archive, ignoring how the sender organised it.
-
-    Only the bare file name is used, never the path recorded inside the archive,
-    so an entry named ../../something cannot write outside the workspace. Sizes
-    are checked against the declared header before anything is written, which is
-    what stops a small archive unpacking into an enormous one.
-    """
     out: list[Path] = []
     total = 0
     with zipfile.ZipFile(archive) as zf:
@@ -61,8 +53,7 @@ def _unpack_zip(archive: Path, into: Path) -> list[Path]:
                 break
             total += info.file_size
             if info.file_size > settings.MAX_FILE_BYTES or total > settings.MAX_EXTRACTED_BYTES:
-                raise HTTPException(status_code=400,
-                                    detail="Isi ZIP melebihi batas ukuran.")
+                raise HTTPException(status_code=400, detail="Isi ZIP melebihi batas ukuran.")
             target = into / name
             stem, suffix, n = target.stem, target.suffix, 2
             while target.exists():
@@ -72,7 +63,6 @@ def _unpack_zip(archive: Path, into: Path) -> list[Path]:
                 shutil.copyfileobj(src, dst)
             out.append(target)
     return out
-
 
 async def _collect(files: list[UploadFile], into: Path) -> list[Path]:
     saved: list[Path] = []
@@ -94,8 +84,7 @@ async def _collect(files: list[UploadFile], into: Path) -> list[Path]:
             try:
                 saved.extend(_unpack_zip(archive, into))
             except zipfile.BadZipFile:
-                raise HTTPException(status_code=400,
-                                    detail=f"{name} bukan berkas ZIP yang sah.") from None
+                raise HTTPException(status_code=400, detail=f"{name} bukan berkas ZIP yang sah.") from None
             finally:
                 archive.unlink(missing_ok=True)
         else:
@@ -118,7 +107,6 @@ def _summary(batch) -> dict:
 
 
 def _skipped_by_reason(batch) -> list[dict]:
-    """Twenty files skipped for the same reason is one line, not twenty cards."""
     grouped: dict[str, list[str]] = {}
     for f in batch.skipped:
         grouped.setdefault(f.reason, []).append(f.name)
@@ -141,7 +129,6 @@ def _report(batch, session: str, file_id: str | None, out: Path | None) -> dict:
         "excel": ({"id": file_id, "file_name": out.name, "rows": batch.total_rows,
                    "tables": len(batch.groups)} if out else None),
     }
-
 
 def _finish_batch(batch, session: str, workspace: Path) -> dict:
     out = pipeline.to_excel(batch, workspace / "out")
@@ -167,7 +154,6 @@ def status():
         "drafts": [{"key": p.key, "name": p.name} for p in profiles.DRAFTS],
     }
 
-
 @app.post("/api/process")
 async def process(
     files: list[UploadFile] = File(...),
@@ -187,8 +173,7 @@ async def process(
     try:
         saved = await _collect(files, incoming)
         if not saved:
-            raise HTTPException(status_code=400,
-                                detail="Tidak ada PDF di dalam yang diunggah.")
+            raise HTTPException(status_code=400, detail="Tidak ada PDF di dalam yang diunggah.")
         batch = pipeline.run(saved, profile_key=company or None)
     except HTTPException:
         shutil.rmtree(workspace, ignore_errors=True)
@@ -197,12 +182,7 @@ async def process(
         shutil.rmtree(workspace, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Gagal memproses: {e}") from e
     finally:
-        # the PDFs have been read; they do not stay on disk any longer
         shutil.rmtree(incoming, ignore_errors=True)
-
-    # Uneven parameters used to stop here and ask whether to merge or refuse.
-    # They no longer pollute anything: each set of parameters becomes its own
-    # table in the sheet, so there is nothing left to decide.
     return _finish_batch(batch, uuid.uuid4().hex, workspace)
 
 
@@ -236,14 +216,11 @@ def finish(session: str):
     return {
         "deleted": gone,
         "files": count,
-        "message": ("Semua data Anda sudah dihapus dari server." if gone else
-                    "Sebagian berkas belum bisa dihapus; akan terhapus otomatis "
-                    "dalam beberapa menit."),
+        "message": ("Semua data Anda sudah dihapus dari server." 
+                    if gone else
+                    "Sebagian berkas belum bisa dihapus; akan terhapus otomatis dalam beberapa menit."),
     }
 
-
-# The page is served by the backend itself, so it always talks to the API on its
-# own origin. Mounted last so the /api routes above keep priority.
 FRONTEND = Path(__file__).resolve().parent.parent / "Frontend"
 if FRONTEND.is_dir():
     app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")

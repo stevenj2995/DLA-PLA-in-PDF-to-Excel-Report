@@ -28,8 +28,6 @@ body {
                Roboto, Helvetica, Arial, sans-serif;
   color: var(--text);
   background-color: #0B4079;
-  /* layered back to front: a soft glow behind where the panel sits, the two
-     corner mesh blobs, then the base diagonal wash */
   background-image:
     radial-gradient(1000px 720px at 50% 28%, rgba(255, 255, 255, .14), transparent 62%),
     radial-gradient(1200px 680px at 85% -10%, rgba(72, 199, 235, .42), transparent 60%),
@@ -54,8 +52,6 @@ body {
   box-shadow: 0 1px 12px rgba(4, 26, 52, .12);
 }
 .site-header::before {
-  /* a faint brand-colour wash behind the logo side, so the bar itself carries
-     a little of the blue rather than reading as plain white */
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(420px 90px at 0% 50%, rgba(18, 93, 171, .07), transparent 75%);
 }
@@ -77,7 +73,6 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .brand::before {
-  /* a thin divider between the logo chip and the wordmark */
   content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 1px;
   background: linear-gradient(180deg, transparent, var(--line-strong), transparent);
 }
@@ -106,11 +101,6 @@ main.container { width: 100%; margin: auto; padding: 34px 20px 52px }
   margin-bottom: 18px;
 }
 
-/* The top accent bar and entrance motion are for the one main step panel --
-   .panel is reused for every note/skipped/table card in the results, where a
-   colored bar and a fade-in replaying on each would turn busy fast. Only the
-   step panel is a <section>; every reused instance is a <div>, so that alone
-   tells them apart with no markup change needed. */
 section.panel {
   position: relative;
   animation: rise .45s ease-out both;
@@ -220,7 +210,6 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 }
 @keyframes spin { to { transform: rotate(360deg) } }
 
-/* kabar */
 .notice {
   padding: 14px 16px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 13.5px;
 }
@@ -231,7 +220,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 .notice-blue { background: var(--blue-soft); border: 1px solid #DCE8F7; color: var(--blue-dark) }
 .notice-green { background: #F3FBF8; border: 1px solid #B7E3D2; color: #0A6B4A }
 
-/* hasil */
+/* result */
 .section-heading {
   font-size: 17px; font-weight: 650; color: var(--on-blue);
   margin: 30px 0 14px; letter-spacing: -.1px;
@@ -292,7 +281,7 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
   .stat .value { font-size: 20px }
 }
 
-/* ---- kartu pilihan perusahaan ---- */
+/* ---- company selection ---- */
 .company-grid {
   display: grid; gap: 12px; margin-top: 14px;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -351,7 +340,6 @@ input[type=password]:focus { outline: none; border-color: var(--blue); box-shado
 
 .company-card.is-loading { color: var(--text-faint); cursor: default; justify-content: center }
 
-/* ---- pratinjau baris hasil ---- */
 .preview-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm) }
 table.preview { border-collapse: collapse; font-size: .82rem; white-space: nowrap }
 table.preview th, table.preview td {
@@ -367,8 +355,7 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
   padding: 4px 12px; font-weight: 600; font-size: .86rem; margin-bottom: 10px;
 }
 
-
-/* ---- ringkasan berkas terpilih ---- */
+/* summary */
 .file-summary {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-top: 14px; padding: 10px 14px;
@@ -387,7 +374,7 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
 }
 .link-btn:hover { color: var(--blue-dark); text-decoration: underline }
 
-/* ---- catatan hasil ---- */
+/* ---- result notes ---- */
 .note-panel { padding: 18px 20px }
 .note-list { list-style: none; display: grid; gap: 12px }
 .note {
@@ -417,7 +404,6 @@ table.preview td { color: var(--text); max-width: 260px; overflow: hidden; text-
 .detail-list li { padding: 2px 0; border-bottom: 1px solid rgba(0,0,0,.04) }
 .detail-list li:last-child { border-bottom: 0 }
 
-/* ---- kartu tabel pratinjau ---- */
 .table-card { padding: 16px 18px; margin-bottom: 14px }
 .table-card .panel-title { margin-bottom: 12px }
 .table-card .preview-note { margin: 10px 2px 0; color: var(--text-soft) }

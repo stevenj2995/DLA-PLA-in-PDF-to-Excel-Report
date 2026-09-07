@@ -9,7 +9,6 @@ ROOT = Path(__file__).parent
 
 HOST = "127.0.0.1"
 
-
 def check_setup() -> None:
     from Backend import profiles
     from Backend.extract.pdf_reader import find_tesseract, ocr_available
@@ -27,7 +26,6 @@ def start_server() -> subprocess.Popen:
          "--host", HOST, "--port", str(PORT), "--log-level", "warning"],
         cwd=str(ROOT),
     )
-
 
 def main() -> int:
     print("DLA to Excel")
